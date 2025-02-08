@@ -1,0 +1,26 @@
+
+=========================| My Personal Agile Task Tracker |===========================
+
+- Convert naming:
+    - types: My_Struct_Or_Other_Type
+    - variables, function arguments, structure members: snake_case_name
+
+======================================================================================
+
+Demos:
+
+- 2D prototype game. I want to make sample game for testing 2D renderer.
+  It will be very thin at first: maybe expose OpenGL API?
+
+  Rendering:
+    - Quads
+    - Atlas texture render
+
+  Audio:
+    - .wav file support
+    - Channeling
+
+  Gameplay:
+    - 2D Quad Collisions
+
+======================================================================================
