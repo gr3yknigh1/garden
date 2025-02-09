@@ -13,6 +13,9 @@
 ## RemedyBG
 *.rdbg
 
+## Raddebugger
+*.rdi
+
 ## Clangd
 .cache/
 compile_commands.json

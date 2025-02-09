@@ -27,8 +27,8 @@ vec4 unpack_rgba_color(int color)
 
 void main(void)
 {
-    //vec4 position = projection * model * vec4(layout_position, 0.0, 1.0);
-    vec4 position = vec4(layout_position, 0.0, 1.0);
+    vec4 position = projection * model * vec4(layout_position, 0.0, 1.0);
+    // vec4 position = vec4(layout_position, 0.0, 1.0);
     gl_Position = vec4(position.xy, 0.0, 1.0);
     color = unpack_rgba_color(layout_color);
 }
