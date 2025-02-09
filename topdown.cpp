@@ -10,18 +10,50 @@
 #include <stdio.h>  // puts, printf, FILE, fopen, freopen, fseek, fclose
 
 #include <windows.h>
+
+// NOTE(i.akkuzin): For `Camera` struct. [2025/02/09]
+#undef near
+#undef far
+
 #include <glad/glad.h>
+#include <glm/glm.hpp>
+#include <glm/ext.hpp>
+#include <glm/ext/matrix_transform.hpp>
+
+#if !defined(LITERAL)
+	#if defined(__cplusplus)
+		#define LITERAL(X) X
+	#else
+		#define LITERAL(X) (X)
+	#endif
+#endif
 
 #if !defined(STATIC_ARRAY_COUNT)
-#define STATIC_ARRAY_COUNT(ARRAY_PTR) (sizeof((ARRAY_PTR)) / sizeof(*(ARRAY_PTR)))
+	#define STATIC_ARRAY_COUNT(ARRAY_PTR) (sizeof((ARRAY_PTR)) / sizeof(*(ARRAY_PTR)))
 #endif
 
 #if !defined(ZERO_STRUCT)
-#define ZERO_STRUCT(STRUCT_PTR) ZeroMemory((STRUCT_PTR), sizeof(*(STRUCT_PTR)))
+	#define ZERO_STRUCT(STRUCT_PTR) ZeroMemory((STRUCT_PTR), sizeof(*(STRUCT_PTR)))
 #endif
 
 typedef int bool32_t;
 typedef unsigned int size32_t;
+typedef int packed_rgba_t;
+
+static_assert(sizeof(packed_rgba_t) == 4);
+
+#if !defined(MAKE_PACKED_RGBA)
+	#define MAKE_PACKED_RGBA(R, G, B, A) (((R) << 24) + ((G) << 16) + ((B) << 8) + (A))
+#endif
+
+#pragma pack(push, 1)
+struct Vertex {
+    float x, y;
+    packed_rgba_t color;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(Vertex) == (sizeof(float) * 2 + sizeof(packed_rgba_t)));
 
 //
 // WGL: Context initialization.
@@ -84,6 +116,38 @@ static void      Win32_InitOpenGLContextExtensions(void);
 static HGLRC     Win32_InitOpenGLContext(HDC device_context);
 LRESULT CALLBACK Win32_WindowEventHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 
+//
+// Camera
+//
+
+enum class Camera_ViewMode {
+	Perspective,
+	Orthogonal
+};
+
+struct Camera {
+    glm::vec3 position;
+    glm::vec3 front;
+    glm::vec3 up;
+
+    float yaw;
+    float pitch;
+
+    float speed;
+    float sensitivity;
+    float fov;
+
+    float near;
+    float far;
+
+	Camera_ViewMode view_mode;
+};
+
+Camera MakeCamera(Camera_ViewMode view_mode);
+
+void RotateCamera(Camera *camera, float x_offset, float y_offset);
+glm::mat4 GetCameraViewMatrix(Camera *camera);
+glm::mat4 GetCameraProjectionMatrix(Camera *camera, int viewport_width, int viewport_height);
 
 //
 // OpenGL API wrappers
@@ -106,7 +170,7 @@ struct VertexBufferLayout {
 };
 
 void VertexBufferLayout_PushFloat(VertexBufferLayout *layout, unsigned int count);
-
+void VertexBufferLayout_PushInt(VertexBufferLayout *layout, unsigned int count);
 
 //
 // @brief Initializes vertex buffer layout.
@@ -115,8 +179,7 @@ void VertexBufferLayout_PushFloat(VertexBufferLayout *layout, unsigned int count
 //     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer)
 //     glBindVertexArray(vertex_array);
 //
-void VertexArray_AddBuffer(const GLuint vertex_array, const GLuint vertex_buffer, const VertexBufferLayout *layout);
-
+void VertexBufferLayout_BuildAttributes(const VertexBufferLayout *layout);
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -156,7 +219,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // OpenGL initialization
     //
-
     HMODULE opengl_module = LoadLibraryW(L"opengl32.dll");
     assert(opengl_module);
 
@@ -184,6 +246,20 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     UpdateWindow(window);
 
+	RECT window_rect;
+	assert(GetClientRect(window, &window_rect));
+
+	int window_x = window_rect.left;
+	int window_y = window_rect.bottom;
+	int window_width = window_rect.right - window_rect.left;
+	int window_height = window_rect.top - window_rect.bottom;
+
+	//glViewport(window_x, window_y, window_width, window_height);
+	//glEnable(GL_BLEND);
+	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	//glEnable(GL_DEPTH_TEST);
+	//glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
     //
     // Game initalization
     //
@@ -199,10 +275,24 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     glUseProgram(basic_shader_program);
 
-    static const float vertexes[] = {
-        0, 0.5,
-        0.5, 0,
-        -0.5, 0
+	GLint model_uniform_loc = glGetUniformLocation(basic_shader_program, "model");
+	assert(model_uniform_loc != -1);
+
+	GLint projection_uniform_loc = glGetUniformLocation(basic_shader_program, "projection");
+	assert(projection_uniform_loc != -1);
+
+	Camera camera = MakeCamera(Camera_ViewMode::Orthogonal);
+
+	glm::mat4 model = glm::identity<glm::mat4>();
+	glm::mat4 projection = GetCameraProjectionMatrix(&camera, window_width, window_height);
+
+	glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
+	glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
+
+    static const Vertex vertexes[] = {
+        { 0, 0.5, MAKE_PACKED_RGBA(6, 10, 15, 255) },
+        { 0.5, 0, MAKE_PACKED_RGBA(45, 67, 3, 255) },
+        { -0.5, 0, MAKE_PACKED_RGBA(9, 8, 145, 255) }
     };
     size_t vertexes_count = STATIC_ARRAY_COUNT(vertexes);
 
@@ -223,13 +313,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     vertex_buffer_layout.attributes = (VertexBufferAttribute *)calloc(1, sizeof(VertexBufferAttribute));
 
     VertexBufferLayout_PushFloat(&vertex_buffer_layout, 2);
+    VertexBufferLayout_PushInt(&vertex_buffer_layout, 1);
+    VertexBufferLayout_BuildAttributes(&vertex_buffer_layout);
 
-    VertexArray_AddBuffer(vertex_array, vertex_buffer, &vertex_buffer_layout);
 
     //
     // Game mainloop
     //
-
 
     while (!global_should_terminate) {
         MSG message;
@@ -491,10 +581,25 @@ LinkShaderProgram(GLuint vertex_shader, GLuint fragment_shader)
         glGetProgramInfoLog(id, (GLsizei)log_buffer_size, NULL, log_buffer);
 
         assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
-        /* IGNITE_DIE_MF("Failed to link OpenGL program! %s", logBuffer); */
+        /* DIE_MF("Failed to link OpenGL program! %s", logBuffer); */
     }
 
     return id;
+}
+
+void
+VertexBufferLayout_PushInt(VertexBufferLayout *layout, unsigned int count)
+{
+    size32_t attribute_size = sizeof(int);
+
+    VertexBufferAttribute *attribute = layout->attributes + layout->attributes_count;
+    attribute->is_normalized = false;
+    attribute->type = GL_INT;
+    attribute->count = count;
+    attribute->size = attribute_size;
+
+    layout->attributes_count += 1;
+    layout->stride += attribute_size * count;
 }
 
 void
@@ -513,9 +618,8 @@ VertexBufferLayout_PushFloat(VertexBufferLayout *layout, unsigned int count)
 }
 
 void
-VertexArray_AddBuffer(const GLuint vertex_array, const GLuint vertex_buffer, const VertexBufferLayout *layout)
+VertexBufferLayout_BuildAttributes(const VertexBufferLayout *layout)
 {
-
     size_t offset = 0;
 
     for (unsigned int attribute_index = 0; attribute_index < layout->attributes_count;
@@ -529,4 +633,80 @@ VertexArray_AddBuffer(const GLuint vertex_array, const GLuint vertex_buffer, con
 
         offset += attribute->size * attribute->count;
     }
+}
+
+
+Camera
+MakeCamera(Camera_ViewMode view_mode)
+{
+    Camera camera;
+	ZERO_STRUCT(&camera);
+
+    camera.position = {0, 0, 3.0f};
+    camera.front = {0, 0, -1.0f};
+    camera.up = {0, 1.0f, 0};
+
+    camera.yaw = -90.0f;
+    camera.pitch = 0.0f;
+
+    camera.speed = 10.0f;
+    camera.sensitivity = 0.5f;
+    camera.fov = 45.0f;
+
+    camera.near = 0.1f;
+    camera.far = 100.0f;
+
+    camera.view_mode = view_mode;
+
+    return camera;
+}
+
+void
+RotateCamera(Camera *camera, float x_offset, float y_offset)
+{
+    x_offset *= camera->sensitivity;
+    y_offset *= camera->sensitivity;
+
+    camera->yaw += x_offset * 1;
+    camera->pitch += y_offset * -1;
+
+    camera->pitch = glm::clamp(camera->pitch, -89.0f, 89.0f);
+
+    float yaw_rad = glm::radians(camera->yaw);
+    float pitch_rad = glm::radians(camera->pitch);
+
+    glm::vec3 direction = LITERAL(glm::vec3) {
+        glm::cos(yaw_rad) * glm::cos(pitch_rad),
+        glm::sin(pitch_rad),
+        glm::sin(yaw_rad) * glm::cos(pitch_rad),
+    };
+    camera->front = glm::normalize(direction);
+}
+
+glm::mat4
+GetCameraViewMatrix(Camera *camera)
+{
+    return glm::lookAt(
+        camera->position, camera->position + camera->front, camera->up);
+}
+
+glm::mat4
+GetCameraProjectionMatrix(Camera *camera, int viewport_width, int viewport_height)
+{
+	if (camera->view_mode == Camera_ViewMode::Perspective) {
+		return glm::perspective(
+			glm::radians(camera->fov),
+			(float)viewport_width / (float)viewport_height,
+			camera->near, camera->far);
+	}
+
+	if (camera->view_mode == Camera_ViewMode::Orthogonal) {
+		return glm::ortho(
+		    0.0f, (float)viewport_width,
+			0.0f, (float)viewport_height,
+			camera->near, camera->far);
+	}
+
+	assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/09]
+	exit(1);
 }

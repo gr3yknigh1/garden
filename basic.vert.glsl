@@ -1,19 +1,34 @@
 #version 330 core
 
 layout(location = 0) in vec2 layout_position;
-// layout(location = 1) in int layout_color;
+layout(location = 1) in int layout_color;
 
 out vec4 color;
 
-// uniform mat4 model = mat4(0);
-// uniform mat4 projection = mat4(0);
+uniform mat4 model = mat4(0);
+uniform mat4 projection = mat4(0);
 
-void
-main(void)
+float normalize_rgba_value(int value)
 {
-    // vec4 position = projection * model * vec4(layout_position, 0.0, 1.0);
+    return value * (1.0 / 255.0);
+}
+
+vec4 unpack_rgba_color(int color)
+{
+    vec4 result;
+
+    result.r = normalize_rgba_value((color & 0xFF000000) >> 24);
+    result.g = normalize_rgba_value((color & 0x00FF0000) >> 16);
+    result.b = normalize_rgba_value((color & 0x0000FF00) >> 8);
+    result.a = normalize_rgba_value((color & 0x000000FF) >> 0);
+
+    return result;
+}
+
+void main(void)
+{
+    //vec4 position = projection * model * vec4(layout_position, 0.0, 1.0);
     vec4 position = vec4(layout_position, 0.0, 1.0);
     gl_Position = vec4(position.xy, 0.0, 1.0);
-
-    color = vec4(1, 1, 1, 1); // layoutColor
+    color = unpack_rgba_color(layout_color);
 }

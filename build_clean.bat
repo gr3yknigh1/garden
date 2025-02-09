@@ -13,9 +13,13 @@ set project_folder=%~dp0
 
 echo I: Cleaning...
 
-del topdown.exe
-del topdown.ilk
-del topdown.obj
-del topdown.pdb
+del %project_folder%*.exe
+del %project_folder%*.ilk
+del %project_folder%*.obj
+del %project_folder%*.pdb
+
+rmdir /S /Q %project_folder%glm\build
 
 echo I: Done!
+
+set /p DUMMY=Hit ENTER to continue...
