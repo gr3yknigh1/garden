@@ -56,6 +56,25 @@ struct Vertex {
 static_assert(sizeof(Vertex) == (sizeof(float) * 2 + sizeof(packed_rgba_t)));
 
 //
+// Allocators
+//
+
+struct Arena {
+    void *data;
+    size_t capacity;
+    size_t occupied;
+};
+
+Arena MakeArena(size_t capacity);
+
+void *ArenaAlloc(Arena *arena, size_t size);
+void *ArenaAllocSet(Arena *arena, size_t size, char c);
+void *ArenaAllocZero(Arena *arena, size_t size);
+
+size_t ResetArena(Arena *arena);
+bool FreeArena(Arena *arena);
+
+//
 // WGL: Context initialization.
 //
 
@@ -166,11 +185,25 @@ struct VertexBufferAttribute {
 struct VertexBufferLayout {
     VertexBufferAttribute *attributes;
     unsigned int attributes_count;
+    unsigned int attributes_capacity;
     size32_t stride;
 };
 
-void VertexBufferLayout_PushFloat(VertexBufferLayout *layout, unsigned int count);
-void VertexBufferLayout_PushInt(VertexBufferLayout *layout, unsigned int count);
+//
+// @brief Initializes struct which stores information about vertex buffer's attributes layout.
+//
+// @param[in] arena Pointer to arena on which will be allocated vertex buffer's attributes array.
+//
+// @param[out] layout Layout which should be initialized.
+//
+// @param[in] attributes_capacity Count of attributes for which should be reserved memory.
+//
+// @return True if allocation of the array was succesfull. Otherwise buy more RAM.
+//
+bool MakeVertexBufferLayout(Arena *arena, VertexBufferLayout *layout, size32_t attributes_capacity);
+VertexBufferAttribute *VertexBufferLayout_Push(VertexBufferLayout *layout, unsigned int count, GLenum type, size_t size);
+VertexBufferAttribute *VertexBufferLayout_PushFloat(VertexBufferLayout *layout, unsigned int count);
+VertexBufferAttribute *VertexBufferLayout_PushInt(VertexBufferLayout *layout, unsigned int count);
 
 //
 // @brief Initializes vertex buffer layout.
@@ -316,14 +349,17 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     size_t vertex_buffer_size = vertexes_count * sizeof(*vertexes);
     glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, vertexes, GL_DYNAMIC_DRAW);
 
+    Arena page_arena = MakeArena(1024);
+
     VertexBufferLayout vertex_buffer_layout;
-    ZERO_STRUCT(&vertex_buffer_layout);
+    assert(MakeVertexBufferLayout(&page_arena, &vertex_buffer_layout, 4));
 
-    vertex_buffer_layout.attributes = (VertexBufferAttribute *)calloc(1, sizeof(VertexBufferAttribute));
+    assert(VertexBufferLayout_PushFloat(&vertex_buffer_layout, 2));
+    assert(VertexBufferLayout_PushInt(&vertex_buffer_layout, 1));
 
-    VertexBufferLayout_PushFloat(&vertex_buffer_layout, 2);
-    VertexBufferLayout_PushInt(&vertex_buffer_layout, 1);
     VertexBufferLayout_BuildAttributes(&vertex_buffer_layout);
+
+    ResetArena(&page_arena);
 
     //
     // Game mainloop
@@ -354,6 +390,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     }
 
     glDeleteProgram(basic_shader_program);
+
+    FreeArena(&page_arena);
 
     assert(FreeLibrary(opengl_module));
     // TODO(i.akkuzin): CloseWindow [2025/02/08]
@@ -595,34 +633,54 @@ LinkShaderProgram(GLuint vertex_shader, GLuint fragment_shader)
     return id;
 }
 
-void
+bool
+MakeVertexBufferLayout(Arena *arena, VertexBufferLayout *layout, size32_t attributes_capacity)
+{
+    ZERO_STRUCT(layout);
+
+    layout->attributes = (VertexBufferAttribute *)ArenaAllocZero(
+        arena, attributes_capacity * sizeof(VertexBufferAttribute));
+
+    if (layout->attributes == nullptr) {
+        return false;
+    }
+
+    layout->attributes_capacity = attributes_capacity;
+
+    return true;
+}
+
+VertexBufferAttribute *
+VertexBufferLayout_Push(VertexBufferLayout *layout, unsigned int count, GLenum type, size32_t size)
+{
+    if (layout->attributes_count + 1 > layout->attributes_capacity) {
+        return nullptr;
+    }
+
+    VertexBufferAttribute *attribute = layout->attributes + layout->attributes_count;
+    attribute->is_normalized = false;
+    attribute->type = type;
+    attribute->count = count;
+    attribute->size = size;
+
+    layout->attributes_count += 1;
+    layout->stride += size * count;
+
+    return attribute;
+}
+
+VertexBufferAttribute *
 VertexBufferLayout_PushInt(VertexBufferLayout *layout, unsigned int count)
 {
     size32_t attribute_size = sizeof(int);
-
-    VertexBufferAttribute *attribute = layout->attributes + layout->attributes_count;
-    attribute->is_normalized = false;
-    attribute->type = GL_INT;
-    attribute->count = count;
-    attribute->size = attribute_size;
-
-    layout->attributes_count += 1;
-    layout->stride += attribute_size * count;
+    return VertexBufferLayout_Push(layout, count, GL_INT, attribute_size);
 }
 
-void
+VertexBufferAttribute *
 VertexBufferLayout_PushFloat(VertexBufferLayout *layout, unsigned int count)
 {
     size32_t attribute_size = sizeof(float);
-
-    VertexBufferAttribute *attribute = layout->attributes + layout->attributes_count;
-    attribute->is_normalized = false;
-    attribute->type = GL_FLOAT;
-    attribute->count = count;
-    attribute->size = attribute_size;
-
-    layout->attributes_count += 1;
-    layout->stride += attribute_size * count;
+    return VertexBufferLayout_Push(layout, count, GL_FLOAT, attribute_size);
 }
 
 void
@@ -717,4 +775,71 @@ GetCameraProjectionMatrix(Camera *camera, int viewport_width, int viewport_heigh
 
     assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/09]
     exit(1);
+}
+
+Arena
+MakeArena(size_t capacity)
+{
+    Arena arena;
+
+    arena.data = VirtualAlloc(
+        0, capacity,
+        MEM_COMMIT | MEM_RESERVE,
+        PAGE_READWRITE);
+
+    arena.capacity = capacity;
+    arena.occupied = 0;
+
+    return arena;
+}
+
+size_t
+ResetArena(Arena *arena)
+{
+    size_t was_occupied = arena->occupied;
+    arena->occupied = 0;
+    return was_occupied;
+}
+
+void *
+ArenaAlloc(Arena *arena, size_t size)
+{
+    if (arena == nullptr) {
+        return nullptr;
+    }
+
+    if (arena->occupied + size > arena->capacity) {
+        return nullptr;
+    }
+
+    void *allocated = ((char *)arena->data) + arena->occupied;
+    arena->occupied += size;
+    return allocated;
+}
+
+void *
+ArenaAllocSet(Arena *arena, size_t size, char c)
+{
+    void *allocated = ArenaAlloc(arena, size);
+
+    if (allocated == nullptr) {
+        return allocated;
+    }
+
+    memset(allocated, c, size);
+    return allocated;
+}
+
+void *
+ArenaAllocZero(Arena *arena, size_t size)
+{
+    return ArenaAllocSet(arena, size, 0);
+}
+
+bool
+FreeArena(Arena *arena)
+{
+    bool result = VirtualFree(arena->data, 0, MEM_RELEASE);
+    ZERO_STRUCT(arena);
+    return result;
 }
