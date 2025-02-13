@@ -183,9 +183,9 @@ glm::mat4 GetCameraProjectionMatrix(Camera *camera, int viewport_width, int view
 //
 // OpenGL API wrappers
 //
-GLuint CompileShaderFromString(const char *string, GLenum type);
+GLuint CompileShaderFromString(Arena *arena, const char *string, GLenum type);
 GLuint CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type);
-GLuint LinkShaderProgram(GLuint vertex_shader, GLuint fragment_shader);
+GLuint LinkShaderProgram(Arena *arena, GLuint vertex_shader, GLuint fragment_shader);
 
 struct VertexBufferAttribute {
     bool is_normalized;
@@ -310,13 +310,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
-    Arena shader_source_arena = MakeArena(1024 * 10);
+    Arena shader_compilation_arena = MakeArena(1024 * 10);
 
-    GLuint basic_vert_shader = CompileShaderFromFile(&shader_source_arena, "basic.vert.glsl", GL_VERTEX_SHADER);
-    GLuint basic_frag_shader = CompileShaderFromFile(&shader_source_arena, "basic.frag.glsl", GL_FRAGMENT_SHADER);
-    GLuint basic_shader_program = LinkShaderProgram(basic_vert_shader, basic_frag_shader);
+    GLuint basic_vert_shader = CompileShaderFromFile(&shader_compilation_arena, "basic.vert.glsl", GL_VERTEX_SHADER);
+    GLuint basic_frag_shader = CompileShaderFromFile(&shader_compilation_arena, "basic.frag.glsl", GL_FRAGMENT_SHADER);
+    GLuint basic_shader_program = LinkShaderProgram(&shader_compilation_arena, basic_vert_shader, basic_frag_shader);
 
-    FreeArena(&shader_source_arena);
+    FreeArena(&shader_compilation_arena);
 
     /* After linking shaders no longer needed. */
     glDeleteShader(basic_vert_shader);
@@ -343,14 +343,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         { (float)window_width / 2 + 20, (float)window_height / 2, MAKE_PACKED_RGBA(45, 67, 3, 255) },
         { (float)window_width / 2 - 20, (float)window_height / 2, MAKE_PACKED_RGBA(9, 8, 145, 255) }
     };
-
-#if 0
-    const Vertex vertexes[] = {
-        { 0, 0.5, MAKE_PACKED_RGBA(6, 10, 15, 255) },
-        { 0.5, 0, MAKE_PACKED_RGBA(45, 67, 3, 255) },
-        { -0.5, 0, MAKE_PACKED_RGBA(9, 8, 145, 255) }
-    };
-#endif
 
     size_t vertexes_count = STATIC_ARRAY_COUNT(vertexes);
 
@@ -579,7 +571,7 @@ CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type)
     fread(string_buffer, string_buffer_size, 1, file);
     fclose(file);
 
-    GLuint id = CompileShaderFromString(string_buffer, type);
+    GLuint id = CompileShaderFromString(arena, string_buffer, type);
 
     assert(ArenaPop(arena, string_buffer));
 
@@ -587,7 +579,7 @@ CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type)
 }
 
 GLuint
-CompileShaderFromString(const char *string, GLenum type)
+CompileShaderFromString(Arena *arena, const char *string, GLenum type)
 {
     GLuint id = glCreateShader(type);
     glShaderSource(id, 1, &string, 0);
@@ -602,22 +594,21 @@ CompileShaderFromString(const char *string, GLenum type)
         assert(log_length);
 
         size_t log_buffer_size = log_length + 1;
-        char *log_buffer = (char *)malloc(log_buffer_size);
+        char *log_buffer = (char *)ArenaAllocZero(arena, log_buffer_size, ARENA_ALLOC_POPABLE);
         assert(log_buffer);
-
-        memset(log_buffer, 0, log_buffer_size);
 
         glGetShaderInfoLog(id, (GLsizei)log_buffer_size, 0, log_buffer);
 
         assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
         /* DIE_MF("Failed to compile OpenGL shader! %s", logBuffer); */
+        ArenaPop(arena, log_buffer);
     }
 
     return id;
 }
 
 GLuint
-LinkShaderProgram(GLuint vertex_shader, GLuint fragment_shader)
+LinkShaderProgram(Arena *arena, GLuint vertex_shader, GLuint fragment_shader)
 {
     GLuint id = glCreateProgram();
 
@@ -635,15 +626,14 @@ LinkShaderProgram(GLuint vertex_shader, GLuint fragment_shader)
         glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
 
         size_t log_buffer_size = log_length + 1;
-        char *log_buffer = (char *)malloc(log_buffer_size);
+        char *log_buffer = (char *)ArenaAllocZero(arena, log_buffer_size, ARENA_ALLOC_POPABLE);
         assert(log_buffer);
-
-        memset(log_buffer, 0, log_buffer_size);
 
         glGetProgramInfoLog(id, (GLsizei)log_buffer_size, NULL, log_buffer);
 
         assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
         /* DIE_MF("Failed to link OpenGL program! %s", logBuffer); */
+        ArenaPop(arena, log_buffer);
     }
 
     return id;
