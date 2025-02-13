@@ -63,6 +63,10 @@ struct Vertex {
 
 static_assert(sizeof(Vertex) == (sizeof(float) * 2 + sizeof(packed_rgba_t)));
 
+struct Color4 {
+    uint8_t r, g, b, a;
+};
+
 //
 // Allocators
 //
@@ -226,6 +230,13 @@ VertexBufferAttribute *VertexBufferLayout_PushInt(VertexBufferLayout *layout, un
 //
 void VertexBufferLayout_BuildAttributes(const VertexBufferLayout *layout);
 
+
+//
+// @param[out] rect Output array of vertexes
+//
+size_t GenerateRect(Vertex *rect, float x, float y, float width, float height, Color4 color);
+
+
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
 {
@@ -299,12 +310,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     int window_width = window_rect.right - window_rect.left;
     int window_height = window_rect.bottom - window_rect.top;
 
-    //glViewport(window_x, window_y, window_width, window_height);
-    //glEnable(GL_BLEND);
-    //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    //glEnable(GL_DEPTH_TEST);
-    //glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
     //
     // Game initalization
     //
@@ -338,13 +343,18 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
 
-    const Vertex vertexes[] = {
-        { (float)window_width / 2,  (float)window_height - 20, MAKE_PACKED_RGBA(6, 10, 15, 255) },
-        { (float)window_width / 2 + 20, (float)window_height / 2, MAKE_PACKED_RGBA(45, 67, 3, 255) },
-        { (float)window_width / 2 - 20, (float)window_height / 2, MAKE_PACKED_RGBA(9, 8, 145, 255) }
-    };
+    Arena geometry_arena = MakeArena(sizeof(Vertex) * 1024);
+    Vertex *vertexes = (Vertex *)ArenaAllocZero(&geometry_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC);
 
-    size_t vertexes_count = STATIC_ARRAY_COUNT(vertexes);
+    Color4 rect_color = { 200, 100, 0, 255 };
+
+    // const Vertex vertexes[] = {
+    //     { (float)window_width / 2,  (float)window_height - 20, MAKE_PACKED_RGBA(6, 10, 15, 255) },
+    //     { (float)window_width / 2 + 20, (float)window_height / 2, MAKE_PACKED_RGBA(45, 67, 3, 255) },
+    //     { (float)window_width / 2 - 20, (float)window_height / 2, MAKE_PACKED_RGBA(9, 8, 145, 255) }
+    // };
+
+    size_t vertexes_count = GenerateRect(vertexes, 100, 100, 200, 200, rect_color);
 
     GLuint vertex_array = 0;
     glGenVertexArrays(1, &vertex_array);
@@ -879,4 +889,22 @@ FreeArena(Arena *arena)
     bool result = VirtualFree(arena->data, 0, MEM_RELEASE);
     ZERO_STRUCT(arena);
     return result;
+}
+
+size_t
+GenerateRect(Vertex *vertexes, float x, float y, float width, float height, Color4 color)
+{
+    size_t c = 0;
+
+    // bottom-left triangle
+    vertexes[c++] = { x + 0    , y + 0,      MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
+    vertexes[c++] = { x + width, y + 0,      MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-right
+    vertexes[c++] = { x + width, y + height, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
+
+    // top-right triangle
+    vertexes[c++] = { x + 0    , y + 0,      MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
+    vertexes[c++] = { x + width, y + height, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
+    vertexes[c++] = { x + 0,     y + height, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };
+
+    return c;
 }
