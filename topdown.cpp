@@ -10,6 +10,7 @@
 #include <stdio.h>  // puts, printf, FILE, fopen, freopen, fseek, fclose
 
 #include <windows.h>
+#include <intrin.h> // __rdtsc
 
 // NOTE(i.akkuzin): For `Camera` struct. [2025/02/09]
 #undef near
@@ -34,6 +35,10 @@
     #else
         #define LITERAL(X) (X)
     #endif
+#endif
+
+#if !defined(STRIGIFY)
+    #define STRINGIFY(X) #X
 #endif
 
 #if !defined(STATIC_ARRAY_COUNT)
@@ -68,7 +73,51 @@ struct Color4 {
 };
 
 //
-// Allocators
+// Perf helpers:
+//
+
+int64_t GetPerfFrequency(void);
+int64_t GetPerfCounter(void);
+uint64_t GetCyclesCount(void);
+
+#pragma pack(push, 1)
+typedef struct Perf_BlockRecord {
+    const char *label;
+    const char *function;
+    const char *file_path;
+    uint64_t line_number;
+    uint64_t cycles_begin;
+    uint64_t cycles_end;
+    int64_t counter_begin;
+    int64_t counter_end;
+} Ignite_Perf_BlockRecord;
+#pragma pack(pop)
+
+void Perf_BlockRecord_Print(const Perf_BlockRecord *record);
+
+#define PERF_BLOCK_RECORD(NAME) NAME##__BLOCK_RECORD
+
+#define PERF_BLOCK_BEGIN(NAME) \
+    Perf_BlockRecord PERF_BLOCK_RECORD(NAME); \
+    do { \
+        PERF_BLOCK_RECORD(NAME).label = STRINGIFY(NAME); \
+        PERF_BLOCK_RECORD(NAME).function = __FUNCTION__; \
+        PERF_BLOCK_RECORD(NAME).file_path = __FILE__; \
+        PERF_BLOCK_RECORD(NAME).line_number = __LINE__; \
+        PERF_BLOCK_RECORD(NAME).cycles_begin = GetCyclesCount(); \
+        PERF_BLOCK_RECORD(NAME).counter_begin = GetPerfCounter(); \
+    } while (0)
+
+#define PERF_BLOCK_END(NAME) \
+    do { \
+        PERF_BLOCK_RECORD(NAME).cycles_end = GetCyclesCount(); \
+        PERF_BLOCK_RECORD(NAME).counter_end = GetPerfCounter(); \
+        Perf_BlockRecord_Print(&PERF_BLOCK_RECORD(NAME)); \
+    } while (0)
+
+
+//
+// Allocators:
 //
 
 struct Arena {
@@ -343,19 +392,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
 
-    Arena geometry_arena = MakeArena(sizeof(Vertex) * 1024);
-    Vertex *vertexes = (Vertex *)ArenaAllocZero(&geometry_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC);
-
-    Color4 rect_color = { 200, 100, 0, 255 };
-
-    // const Vertex vertexes[] = {
-    //     { (float)window_width / 2,  (float)window_height - 20, MAKE_PACKED_RGBA(6, 10, 15, 255) },
-    //     { (float)window_width / 2 + 20, (float)window_height / 2, MAKE_PACKED_RGBA(45, 67, 3, 255) },
-    //     { (float)window_width / 2 - 20, (float)window_height / 2, MAKE_PACKED_RGBA(9, 8, 145, 255) }
-    // };
-
-    size_t vertexes_count = GenerateRect(vertexes, 100, 100, 200, 200, rect_color);
-
     GLuint vertex_array = 0;
     glGenVertexArrays(1, &vertex_array);
     glBindVertexArray(vertex_array);
@@ -363,9 +399,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     GLuint vertex_buffer;
     glGenBuffers(1, &vertex_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-
-    size_t vertex_buffer_size = vertexes_count * sizeof(*vertexes);
-    glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, vertexes, GL_DYNAMIC_DRAW);
 
     Arena page_arena = MakeArena(1024);
 
@@ -382,6 +415,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Game mainloop
     //
+
+    Arena geometry_arena = MakeArena(sizeof(Vertex) * 1024);
+
+    float player_x = 0, player_y = 0;
 
     while (!global_should_terminate) {
         MSG message;
@@ -401,15 +438,28 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
             break;
         }
 
+        PERF_BLOCK_BEGIN(DRAW);
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        Vertex *vertexes = (Vertex *)ArenaAllocZero(&geometry_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC);
+        Color4 rect_color = { 200, 100, 0, 255 };
+        size_t vertexes_count = GenerateRect(vertexes, player_x, player_y, 100, 100, rect_color);
+        size_t vertex_buffer_size = vertexes_count * sizeof(*vertexes);
+        glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, vertexes, GL_DYNAMIC_DRAW);
+
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
 
         assert(SwapBuffers(window_device_context));
+        PERF_BLOCK_END(DRAW);
+
+        ResetArena(&geometry_arena);
     }
 
     glDeleteProgram(basic_shader_program);
 
     FreeArena(&page_arena);
+    FreeArena(&geometry_arena);
 
     assert(FreeLibrary(opengl_module));
     // TODO(i.akkuzin): CloseWindow [2025/02/08]
@@ -907,4 +957,44 @@ GenerateRect(Vertex *vertexes, float x, float y, float width, float height, Colo
     vertexes[c++] = { x + 0,     y + height, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };
 
     return c;
+}
+
+int64_t
+GetPerfFrequency(void)
+{
+    LARGE_INTEGER perf_frequency_result;
+    QueryPerformanceFrequency(&perf_frequency_result);
+    int64_t perf_frequency = perf_frequency_result.QuadPart;
+    return perf_frequency;
+}
+
+int64_t
+GetPerfCounter(void)
+{
+    LARGE_INTEGER perf_counter_result;
+    QueryPerformanceCounter(&perf_counter_result);
+    int64_t perf_counter = perf_counter_result.QuadPart;
+    return perf_counter;
+}
+
+uint64_t
+GetCyclesCount(void)
+{
+    uint64_t cycles_count = __rdtsc();
+    return cycles_count;
+}
+
+void
+Perf_BlockRecord_Print(const Perf_BlockRecord *record)
+{
+    int64_t perf_frequency = GetPerfFrequency();
+
+    int64_t counter_elapsed = record->counter_end - record->counter_begin;
+    int64_t ms_elapsed = (1000 * counter_elapsed) / perf_frequency;
+    uint64_t cycles_elapsed = record->cycles_end - record->cycles_begin;
+    uint64_t mega_cycles_elapsed = cycles_elapsed / (1000 * 1000);
+
+    printf(
+        "PERF: %s:%llu@%s [%s]: counter = (%llu) ms = (%llu) | Mc = %llu\n", record->file_path, record->line_number,
+        record->function, record->label, counter_elapsed, ms_elapsed, mega_cycles_elapsed);
 }
