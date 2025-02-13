@@ -20,6 +20,14 @@
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
+#if !defined(MAKE_FLAG)
+    #define MAKE_FLAG(INDEX) (1 << (INDEX))
+#endif
+
+#if !defined(HAS_FLAG)
+    #define HAS_FLAG(MASK, FLAG) (((MASK) & (FLAG)) == (FLAG))
+#endif
+
 #if !defined(LITERAL)
     #if defined(__cplusplus)
         #define LITERAL(X) X
@@ -67,9 +75,13 @@ struct Arena {
 
 Arena MakeArena(size_t capacity);
 
-void *ArenaAlloc(Arena *arena, size_t size);
-void *ArenaAllocSet(Arena *arena, size_t size, char c);
-void *ArenaAllocZero(Arena *arena, size_t size);
+#define ARENA_ALLOC_BASIC   MAKE_FLAG(0)
+#define ARENA_ALLOC_POPABLE MAKE_FLAG(1)
+
+void *ArenaAlloc(Arena *arena, size_t size, int options);
+void *ArenaAllocSet(Arena *arena, size_t size, char c, int options);
+void *ArenaAllocZero(Arena *arena, size_t size, int options);
+bool ArenaPop(Arena *arena, void *data);
 
 size_t ResetArena(Arena *arena);
 bool FreeArena(Arena *arena);
@@ -172,7 +184,7 @@ glm::mat4 GetCameraProjectionMatrix(Camera *camera, int viewport_width, int view
 // OpenGL API wrappers
 //
 GLuint CompileShaderFromString(const char *string, GLenum type);
-GLuint CompileShaderFromFile(const char *file_path, GLenum type);
+GLuint CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type);
 GLuint LinkShaderProgram(GLuint vertex_shader, GLuint fragment_shader);
 
 struct VertexBufferAttribute {
@@ -298,9 +310,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
-    GLuint basic_vert_shader = CompileShaderFromFile("basic.vert.glsl", GL_VERTEX_SHADER);
-    GLuint basic_frag_shader = CompileShaderFromFile("basic.frag.glsl", GL_FRAGMENT_SHADER);
+    Arena shader_source_arena = MakeArena(1024 * 10);
+
+    GLuint basic_vert_shader = CompileShaderFromFile(&shader_source_arena, "basic.vert.glsl", GL_VERTEX_SHADER);
+    GLuint basic_frag_shader = CompileShaderFromFile(&shader_source_arena, "basic.frag.glsl", GL_FRAGMENT_SHADER);
     GLuint basic_shader_program = LinkShaderProgram(basic_vert_shader, basic_frag_shader);
+
+    FreeArena(&shader_source_arena);
 
     /* After linking shaders no longer needed. */
     glDeleteShader(basic_vert_shader);
@@ -542,7 +558,7 @@ Win32_InitOpenGLContext(HDC device_context)
 }
 
 GLuint
-CompileShaderFromFile(const char *file_path, GLenum type)
+CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type)
 {
     // TODO(gr3yknigh1): Check for path existens and that it is file [2024/11/24]
 
@@ -554,18 +570,18 @@ CompileShaderFromFile(const char *file_path, GLenum type)
     fseek(file, 0, SEEK_SET);
     assert(file_size);
 
-    size_t string_buffer_size = file_size + 1;
-    char *string_buffer = (char *)malloc(string_buffer_size);
-    assert(string_buffer);
 
-    memset(string_buffer, 0, string_buffer_size);
+    size_t string_buffer_size = file_size + 1;
+
+    char *string_buffer = (char *)ArenaAllocZero(arena, string_buffer_size, ARENA_ALLOC_POPABLE);
+    assert(string_buffer);
 
     fread(string_buffer, string_buffer_size, 1, file);
     fclose(file);
 
     GLuint id = CompileShaderFromString(string_buffer, type);
 
-    free(string_buffer);
+    assert(ArenaPop(arena, string_buffer));
 
     return id;
 }
@@ -639,7 +655,7 @@ MakeVertexBufferLayout(Arena *arena, VertexBufferLayout *layout, size32_t attrib
     ZERO_STRUCT(layout);
 
     layout->attributes = (VertexBufferAttribute *)ArenaAllocZero(
-        arena, attributes_capacity * sizeof(VertexBufferAttribute));
+        arena, attributes_capacity * sizeof(VertexBufferAttribute), ARENA_ALLOC_BASIC);
 
     if (layout->attributes == nullptr) {
         return false;
@@ -793,6 +809,24 @@ MakeArena(size_t capacity)
     return arena;
 }
 
+bool
+ArenaPop(Arena *arena, void *data)
+{
+    if (arena == nullptr || data == nullptr) {
+        return false;
+    }
+
+    if (arena->data == nullptr || arena->occupied < sizeof(arena->occupied) || arena->capacity == 0) {
+        return false;
+    }
+
+    size_t *data_size = ((size_t *)data) - 1;
+    arena->occupied -= *data_size;
+    arena->occupied -= sizeof(*data_size);
+
+    return true;
+}
+
 size_t
 ResetArena(Arena *arena)
 {
@@ -802,25 +836,38 @@ ResetArena(Arena *arena)
 }
 
 void *
-ArenaAlloc(Arena *arena, size_t size)
+ArenaAlloc(Arena *arena, size_t size, int options)
 {
     if (arena == nullptr) {
         return nullptr;
     }
 
-    if (arena->occupied + size > arena->capacity) {
+    size_t additionals_size = 0;
+
+    if (HAS_FLAG(options, ARENA_ALLOC_POPABLE)) {
+        additionals_size = sizeof(size);
+    }
+
+    if (arena->occupied + size + additionals_size > arena->capacity) {
         return nullptr;
     }
 
     void *allocated = ((char *)arena->data) + arena->occupied;
-    arena->occupied += size;
+
+    if (HAS_FLAG(options, ARENA_ALLOC_POPABLE)) {
+        *((size_t *)allocated) = size;
+
+        allocated = (char *)allocated + additionals_size;
+    }
+
+    arena->occupied += size + additionals_size;
     return allocated;
 }
 
 void *
-ArenaAllocSet(Arena *arena, size_t size, char c)
+ArenaAllocSet(Arena *arena, size_t size, char c, int options)
 {
-    void *allocated = ArenaAlloc(arena, size);
+    void *allocated = ArenaAlloc(arena, size, options);
 
     if (allocated == nullptr) {
         return allocated;
@@ -831,9 +878,9 @@ ArenaAllocSet(Arena *arena, size_t size, char c)
 }
 
 void *
-ArenaAllocZero(Arena *arena, size_t size)
+ArenaAllocZero(Arena *arena, size_t size, int options)
 {
-    return ArenaAllocSet(arena, size, 0);
+    return ArenaAllocSet(arena, size, 0, options);
 }
 
 bool
