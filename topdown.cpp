@@ -6,6 +6,7 @@
 //
 // NOTICE        (c) Copyright 2025 by Ilya Akkuzin. All rights reserved.
 //
+#include <math.h>   // sqrtf
 #include <assert.h> // assert
 #include <stdio.h>  // puts, printf, FILE, fopen, freopen, fseek, fclose
 
@@ -309,6 +310,8 @@ struct Win32_KeyState {
 
 Win32_KeyState Win32_ConvertMSGToKeyState(MSG message);
 
+bool Win32_IsVkPressed(int vk);
+
 //
 // Handle keyboard input for Win32 API layer.
 //
@@ -318,6 +321,18 @@ Win32_KeyState Win32_ConvertMSGToKeyState(MSG message);
 //
 void Win32_HandleKeyboardInput(MSG message, InputState *input_state);
 
+struct Clock {
+    float ticks_begin;
+    float ticks_end;
+    float frequency;
+};
+
+Clock MakeClock(void);
+float TickClock(Clock *clock);
+
+
+float Absolute(float x);
+void NormalizeVector2F(float *x, float *y);
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -453,21 +468,16 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     float player_x = 0, player_y = 0, player_speed = 300.0f;
 
-    float perf_frequency = (float)GetPerfFrequency();
-    float ticks_begin = 0;
-    float ticks_end = 0;
-    float dt = 1.0f;
+    Clock clock = MakeClock();
+
+    InputState input_state;
+    ZERO_STRUCT(&input_state);
 
     while (!global_should_terminate) {
-
-        ticks_begin = (float)GetPerfCounter();
-
+        float dt = TickClock(&clock);
 
         MSG message;
         ZERO_STRUCT(&message);
-
-        InputState input_state;
-        ZERO_STRUCT(&input_state);
 
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
@@ -477,9 +487,34 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 case WM_KEYUP:
                 case WM_KEYDOWN:
                 case WM_SYSKEYUP:
-                case WM_SYSKEYDOWN:
-                    Win32_HandleKeyboardInput(message, &input_state);
-                    break;
+                case WM_SYSKEYDOWN: {
+                    Win32_KeyState key = Win32_ConvertMSGToKeyState(message);
+
+                    if (!WIN32_KEYSTATE_IS_RELEASED(&key)) {
+                        if (key.vk_code == VK_LEFT) {
+                            input_state.x_direction = -1;
+                        } else if (key.vk_code == VK_RIGHT) {
+                            input_state.x_direction = +1;
+                        }
+
+                        if (key.vk_code == VK_DOWN) {
+                            input_state.y_direction = -1;
+                        } else if (key.vk_code == VK_UP) {
+                            input_state.y_direction = +1;
+                        }
+                    } else {
+                        if ((key.vk_code == VK_LEFT && !Win32_IsVkPressed(VK_RIGHT))
+                         || ((key.vk_code == VK_RIGHT) && !Win32_IsVkPressed(VK_LEFT))) {
+                            input_state.x_direction = 0;
+                        }
+
+                        if ((key.vk_code == VK_DOWN && !Win32_IsVkPressed(VK_UP))
+                         || (key.vk_code == VK_UP && !Win32_IsVkPressed(VK_DOWN))) {
+                            input_state.y_direction = 0;
+                        }
+                    }
+
+                } break;
                 }
             }
 
@@ -492,29 +527,35 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
             break;
         }
 
-        player_x += player_speed * input_state.x_direction * dt;
-        player_y += player_speed * input_state.y_direction * dt;
+        PERF_BLOCK_BEGIN(UPDATE);
+
+            if (Absolute(input_state.x_direction) >= 1.0f && Absolute(input_state.y_direction) >= 1.0f) {
+                // TODO(gr3yknigh1): Fix strange floating-point bug for diagonal movement [2025/02/20]
+                NormalizeVector2F(&input_state.x_direction, &input_state.y_direction);
+            }
+
+            player_x += player_speed * input_state.x_direction * dt;
+            player_y += player_speed * input_state.y_direction * dt;
+
+        PERF_BLOCK_END(UPDATE);
 
         PERF_BLOCK_BEGIN(DRAW);
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        Vertex *vertexes = (Vertex *)ArenaAllocZero(&geometry_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC);
-        Color4 rect_color = { 200, 100, 0, 255 };
-        size_t vertexes_count = GenerateRect(vertexes, player_x, player_y, 100, 100, rect_color);
-        size_t vertex_buffer_size = vertexes_count * sizeof(*vertexes);
-        glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, vertexes, GL_DYNAMIC_DRAW);
+            Vertex *vertexes = (Vertex *)ArenaAllocZero(&geometry_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC);
+            Color4 rect_color = { 200, 100, 0, 255 };
+            size_t vertexes_count = GenerateRect(vertexes, player_x, player_y, 100, 100, rect_color);
+            size_t vertex_buffer_size = vertexes_count * sizeof(*vertexes);
+            glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, vertexes, GL_DYNAMIC_DRAW);
 
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
+            glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
 
-        assert(SwapBuffers(window_device_context));
+            assert(SwapBuffers(window_device_context));
+
         PERF_BLOCK_END(DRAW);
 
         ResetArena(&geometry_arena);
-
-        ticks_end = (float)GetPerfCounter();
-        dt = ticks_end - ticks_begin;
-        dt /= perf_frequency;
     }
 
     glDeleteProgram(basic_shader_program);
@@ -1091,28 +1132,44 @@ Win32_ConvertMSGToKeyState(MSG message)
     return key_state;
 }
 
-void
-Win32_HandleKeyboardInput(MSG message, InputState *input_state)
+Clock
+MakeClock(void)
 {
-    input_state->x_direction = 0;
-    input_state->y_direction = 0;
+    Clock clock;
+    clock.ticks_begin = 0;
+    clock.ticks_end = 0;
+    clock.frequency = (float)GetPerfFrequency();
+    return clock;
+}
 
-    Win32_KeyState key = Win32_ConvertMSGToKeyState(message);
 
-    if (key.vk_code == VK_LEFT) {
-        input_state->x_direction = -1;
-    }
+float
+TickClock(Clock *clock)
+{
+    clock->ticks_end = (float)GetPerfCounter();
+    float elapsed = (clock->ticks_end - clock->ticks_begin) / clock->frequency;
+    clock->ticks_begin = (float)GetPerfCounter();
+    return elapsed;
+}
 
-    if (key.vk_code == VK_RIGHT) {
-        input_state->x_direction = +1;
-    }
+float
+Absolute(float x)
+{
+    return x < 0 ? -x : x;
+}
 
-    if (key.vk_code == VK_DOWN) {
-        input_state->y_direction = -1;
-    }
+void
+NormalizeVector2F(float *x, float *y)
+{
+    float magnitude = sqrtf(powf(*x, 2) + powf(*y, 2));
+    *x /= magnitude;
+    *y /= magnitude;
+}
 
-    if (key.vk_code == VK_UP) {
-        input_state->y_direction = +1;
-    }
-
+bool
+Win32_IsVkPressed(int vk)
+{
+    short state = GetKeyState(vk);
+    bool result = state >> 15;
+    return result;
 }
