@@ -51,7 +51,7 @@ if exist %glm_lib% (
   echo I: GLM already compiled!
 ) else (
   cmake -B %glm_configuration% -S %glm_folder% -D GLM_BUILD_TESTS=OFF -D BUILD_SHARED_LIBS=OFF
-  cmake --build %glm_configuration%
+  cmake --build %glm_configuration% --config %build_type%
 )
 
 cl.exe ^

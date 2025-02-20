@@ -285,6 +285,39 @@ void VertexBufferLayout_BuildAttributes(const VertexBufferLayout *layout);
 //
 size_t GenerateRect(Vertex *rect, float x, float y, float width, float height, Color4 color);
 
+struct InputState {
+    float x_direction;
+    float y_direction;
+};
+
+struct Win32_KeyState {
+    short vk_code;
+    short flags;
+    short scan_code;
+    short repeat_count;
+
+    MSG native_message;
+};
+
+#if !defined(WIN32_KEYSTATE_IS_EXTENDED)
+    #define WIN32_KEYSTATE_IS_EXTENDED(K_PTR) HAS_FLAG((K_PTR)->flags, KF_EXTENDED)
+#endif
+
+#if !defined(WIN32_KEYSTATE_IS_RELEASED)
+    #define WIN32_KEYSTATE_IS_RELEASED(K_PTR) HAS_FLAG((K_PTR)->flags, KF_UP)
+#endif
+
+Win32_KeyState Win32_ConvertMSGToKeyState(MSG message);
+
+//
+// Handle keyboard input for Win32 API layer.
+//
+// @param[in] message Actual windows message which received in mainloop.
+//
+// @param[out] input_state Output InputState of the game.
+//
+void Win32_HandleKeyboardInput(MSG message, InputState *input_state);
+
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -322,7 +355,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     assert(UpdateWindow(window));
 
     //
-    // OpenGL initialization
+    // OpenGL initialization:
     //
     HMODULE opengl_module = LoadLibraryW(L"opengl32.dll");
     assert(opengl_module);
@@ -418,15 +451,36 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     Arena geometry_arena = MakeArena(sizeof(Vertex) * 1024);
 
-    float player_x = 0, player_y = 0;
+    float player_x = 0, player_y = 0, player_speed = 300.0f;
+
+    float perf_frequency = (float)GetPerfFrequency();
+    float ticks_begin = 0;
+    float ticks_end = 0;
+    float dt = 1.0f;
 
     while (!global_should_terminate) {
+
+        ticks_begin = (float)GetPerfCounter();
+
+
         MSG message;
         ZERO_STRUCT(&message);
+
+        InputState input_state;
+        ZERO_STRUCT(&input_state);
 
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
                 global_should_terminate = true;
+            } else {
+                switch (message.message) {
+                case WM_KEYUP:
+                case WM_KEYDOWN:
+                case WM_SYSKEYUP:
+                case WM_SYSKEYDOWN:
+                    Win32_HandleKeyboardInput(message, &input_state);
+                    break;
+                }
             }
 
             TranslateMessage(&message);
@@ -437,6 +491,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         if (global_should_terminate) {
             break;
         }
+
+        player_x += player_speed * input_state.x_direction * dt;
+        player_y += player_speed * input_state.y_direction * dt;
 
         PERF_BLOCK_BEGIN(DRAW);
 
@@ -454,6 +511,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         PERF_BLOCK_END(DRAW);
 
         ResetArena(&geometry_arena);
+
+        ticks_end = (float)GetPerfCounter();
+        dt = ticks_end - ticks_begin;
+        dt /= perf_frequency;
     }
 
     glDeleteProgram(basic_shader_program);
@@ -622,11 +683,12 @@ CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type)
     fseek(file, 0, SEEK_SET);
     assert(file_size);
 
-
     size_t string_buffer_size = file_size + 1;
 
     char *string_buffer = (char *)ArenaAllocZero(arena, string_buffer_size, ARENA_ALLOC_POPABLE);
     assert(string_buffer);
+
+    memset(string_buffer, 0, string_buffer_size);
 
     fread(string_buffer, string_buffer_size, 1, file);
     fclose(file);
@@ -997,4 +1059,60 @@ Perf_BlockRecord_Print(const Perf_BlockRecord *record)
     printf(
         "PERF: %s:%llu@%s [%s]: counter = (%llu) ms = (%llu) | Mc = %llu\n", record->file_path, record->line_number,
         record->function, record->label, counter_elapsed, ms_elapsed, mega_cycles_elapsed);
+}
+
+Win32_KeyState
+Win32_ConvertMSGToKeyState(MSG message)
+{
+    //
+    // @ref <https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input>
+    //
+    Win32_KeyState key_state;
+
+
+    key_state.vk_code = LOWORD(message.wParam);
+    key_state.flags = HIWORD(message.lParam);
+    key_state.scan_code = LOBYTE(key_state.flags);
+
+    if (WIN32_KEYSTATE_IS_EXTENDED(&key_state)) {
+        key_state.scan_code = MAKEWORD(key_state.scan_code, 0xE0);
+    }
+
+    key_state.repeat_count = LOWORD(message.lParam);
+
+    switch (key_state.vk_code) {
+    case VK_SHIFT:   // converts to VK_LSHIFT or VK_RSHIFT
+    case VK_CONTROL: // converts to VK_LCONTROL or VK_RCONTROL
+    case VK_MENU:    // converts to VK_LMENU or VK_RMENU
+        key_state.vk_code = LOWORD(MapVirtualKeyW(key_state.scan_code, MAPVK_VSC_TO_VK_EX));
+        break;
+    }
+
+    return key_state;
+}
+
+void
+Win32_HandleKeyboardInput(MSG message, InputState *input_state)
+{
+    input_state->x_direction = 0;
+    input_state->y_direction = 0;
+
+    Win32_KeyState key = Win32_ConvertMSGToKeyState(message);
+
+    if (key.vk_code == VK_LEFT) {
+        input_state->x_direction = -1;
+    }
+
+    if (key.vk_code == VK_RIGHT) {
+        input_state->x_direction = +1;
+    }
+
+    if (key.vk_code == VK_DOWN) {
+        input_state->y_direction = -1;
+    }
+
+    if (key.vk_code == VK_UP) {
+        input_state->y_direction = +1;
+    }
+
 }
