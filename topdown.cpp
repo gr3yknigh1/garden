@@ -9,6 +9,7 @@
 #include <math.h>   // sqrtf
 #include <assert.h> // assert
 #include <stdio.h>  // puts, printf, FILE, fopen, freopen, fseek, fclose
+#include <ctype.h>  // isspace
 
 #include <windows.h>
 #include <intrin.h> // __rdtsc
@@ -77,6 +78,83 @@ struct ColorRGBA_U8 {
 #pragma pack(pop)
 
 typedef ColorRGBA_U8 Color4;
+
+//
+// String handling:
+//
+
+constexpr size_t
+GetStrLength(const char *s) noexcept
+{
+    size_t result = 0;
+
+    while (s[result] != 0) {
+        result++;
+    }
+
+    return result;
+}
+
+struct StrView8 {
+    const char *data;
+    size_t length;
+
+    constexpr StrView8() noexcept : data(nullptr), length(0) {}
+    constexpr StrView8(const char *data_) noexcept : data(data_), length(GetStrLength(data_)) {}
+    constexpr StrView8(const char *data_, size_t length_) noexcept : data(data_), length(length_) {}
+};
+
+inline StrView8
+StrView8_CaptureUntil(const char **cursor, char until) noexcept
+{
+    StrView8 sv;
+
+    sv.data = *cursor;
+
+    while (**cursor != until) {
+        (*cursor)++;
+    }
+
+    sv.length = *cursor - sv.data;
+
+    return sv;
+}
+
+inline bool
+StrView8_CopyToNullTerminated(StrView8 sv, char *out_buffer, size_t out_buffer_size) noexcept
+{
+    if (sv.length + 1 > out_buffer_size) {
+        return false;
+    }
+
+    memcpy((void *)out_buffer, sv.data, sv.length);
+    out_buffer[sv.length] = 0;
+    return true;
+}
+
+constexpr bool
+StrView8_IsEquals(StrView8 a, StrView8 b) noexcept
+{
+    if (a.length != b.length) {
+        return false;
+    }
+
+    // TODO(gr3yknigh1): Do vectorization [2025/01/03]
+    for (size_t i = 0; i < a.length; ++i) {
+        if (a.data[i] != b.data[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+constexpr bool
+StrView8_IsEquals(StrView8 a, const char *str) noexcept
+{
+    StrView8 b(str);
+    return StrView8_IsEquals(a, b);
+}
 
 //
 // Perf helpers:
@@ -425,6 +503,34 @@ bool LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char 
 //
 void Gl_TextureImage2D_FromBitmapPicture(void *data, size32_t width, size32_t height, BitmapPictureCompressionMethod compression_method, GLenum internal_format);
 
+//
+// Tilemaps:
+//
+
+enum struct TileMapImageFormat {
+    Bitmap,
+};
+
+struct Tilemap {
+    // TODO(gr3yknigh1): Implement uint parsing [2025/02/23]
+
+    int row_count;
+    int col_count;
+
+    TileMapImageFormat format;
+    int tile_x_pixel_count;
+    int tile_y_pixel_count;
+
+    void *indexes;
+    size_t indexes_count;
+
+    union {
+        void *pixel_data;
+        BitmapPicture *picture;
+    } u;
+};
+
+Tilemap *LoadTilemapFromFile(Arena *arena, const char *file_path);
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -577,6 +683,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     ResetArena(&asset_arena);
 
+
+    Tilemap * tilemap = LoadTilemapFromFile(&asset_arena, "demo.tilemap.tp");
+
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
@@ -635,8 +744,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                             input_state.y_direction = +1;
                         }
                     } else {
-                        if ((key.vk_code == VK_LEFT && !Win32_IsVkPressed(VK_RIGHT))
-                         || ((key.vk_code == VK_RIGHT) && !Win32_IsVkPressed(VK_LEFT))) {
+                        if ((key.vk_code == VK_LEFT   && !Win32_IsVkPressed(VK_RIGHT))
+                        || ((key.vk_code == VK_RIGHT) && !Win32_IsVkPressed(VK_LEFT))) {
                             input_state.x_direction = 0;
                         }
 
@@ -697,7 +806,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     FreeArena(&geometry_arena);
 
     assert(FreeLibrary(opengl_module));
-    // TODO(i.akkuzin): CloseWindow [2025/02/08]
+    CloseWindow(window); // TODO(gr3yknigh1): why it fails? [2025/02/23]
 
     return 0;
 }
@@ -1347,4 +1456,261 @@ Gl_TextureImage2D_FromBitmapPicture(void *data, size32_t width, size32_t height,
 
     assert(format && type); // NOTE(gr3yknigh1): Should not be zero [2025/02/23]
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, type, data);
+}
+
+struct Lexer {
+    char *cursor;
+    char lexeme;
+
+    char *buffer;
+    size_t buffer_size;
+};
+
+Lexer MakeLexer(char *buffer, size_t buffer_size);
+
+void Lexer_Advance(Lexer *lexer, int32_t count = 1);
+
+char     Lexer_Peek(Lexer *lexer, int32_t offset);
+StrView8 Lexer_PeekView(Lexer *lexer, int32_t offset);
+
+bool     Lexer_CheckPeeked(Lexer *lexer, const char *s);
+bool     Lexer_CheckPeeked(Lexer *lexer, StrView8 s);
+
+bool     Lexer_ParseInt(Lexer *lexer, int *result);
+
+StrView8 Lexer_SkipUntil     (Lexer *lexer, char c);
+StrView8 Lexer_SkipUntilEndline(Lexer *lexer);
+void     Lexer_SkipWhitespace(Lexer *lexer);
+
+bool Lexer_IsEndline(Lexer *lexer, bool *is_crlf = nullptr);
+bool Lexer_IsEnd(Lexer *lexer);
+
+Tilemap *
+LoadTilemapFromFile(Arena *arena, const char *file_path)
+{
+    FILE *file = fopen(file_path, "r");
+
+    if (file == nullptr) {
+        return nullptr;
+    }
+
+    Tilemap *tilemap = (Tilemap *)ArenaAllocZero(arena, sizeof(Tilemap), ARENA_ALLOC_BASIC);
+    if (tilemap == nullptr) {
+        return nullptr;
+    }
+
+    fseek(file, 0, SEEK_END);
+    size_t file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    assert(file_size);
+
+    char *file_buffer = (char *)ArenaAlloc(arena, file_size, ARENA_ALLOC_POPABLE);
+    assert(file_buffer);
+
+    fread(file_buffer, file_size, 1, file);
+    fclose(file);
+
+    Lexer lexer = MakeLexer(file_buffer, file_size);
+
+    static constexpr StrView8 s_tilemap_directive = "@tilemap";
+
+    StrView8 image_path;
+
+    while (!Lexer_IsEnd(&lexer)) {
+        Lexer_SkipWhitespace(&lexer);
+
+        if (Lexer_CheckPeeked(&lexer, "//")) {
+            (void)Lexer_SkipUntilEndline(&lexer);
+            continue;
+        }
+
+        if (Lexer_CheckPeeked( &lexer, s_tilemap_directive )) {
+            Lexer_Advance(&lexer, (int32_t)s_tilemap_directive.length);
+            Lexer_SkipWhitespace(&lexer);
+            assert(Lexer_ParseInt(&lexer, &tilemap->row_count));
+            Lexer_SkipWhitespace(&lexer);
+            assert(Lexer_ParseInt(&lexer, &tilemap->col_count));
+            Lexer_SkipWhitespace(&lexer);
+            continue;
+        }
+
+        if (isdigit(lexer.lexeme)) {
+            // Handle data
+        }
+
+        Lexer_Advance(&lexer);
+    }
+
+    assert(ArenaPop(arena, file_buffer));
+
+    fclose(file);
+    return tilemap;
+}
+
+
+Lexer
+MakeLexer(char *buffer, size_t buffer_size)
+{
+    Lexer lexer;
+
+    lexer.cursor = buffer;
+    lexer.lexeme = *buffer;
+
+    lexer.buffer = buffer;
+    lexer.buffer_size = buffer_size;
+
+    return lexer;
+}
+
+void
+Lexer_Advance(Lexer *lexer, int32_t count)
+{
+    size_t cursor_index = lexer->cursor - lexer->buffer;
+
+    if (Lexer_IsEnd(lexer) && cursor_index + count < lexer->buffer_size) {
+        return;
+    }
+
+    while (count > 0) {
+        lexer->cursor++;
+        --count;
+    }
+
+    lexer->lexeme = *(lexer->cursor);
+}
+
+char
+Lexer_Peek(Lexer *lexer, int32_t offset)
+{
+    size_t cursor_index = lexer->cursor - lexer->buffer;
+
+    // TODO(gr3yknigh1): Maybe make it signed? [2025/02/23]
+    if (cursor_index + offset < lexer->buffer_size) {
+        char *peek = lexer->cursor + offset;
+        return *peek;
+    }
+
+    return 0;
+}
+
+StrView8
+Lexer_PeekView(Lexer *lexer, int32_t offset)
+{
+    size_t cursor_index = lexer->cursor - lexer->buffer;
+
+    // TODO(gr3yknigh1): Maybe make it signed? [2025/02/23]
+    if (cursor_index + offset < lexer->buffer_size) {
+        if (offset < 0) {
+            return StrView8(lexer->cursor + offset, -offset);
+        } else if (offset > 0) {
+            return StrView8(lexer->cursor, offset);
+        }
+    }
+    return StrView8();  // do a better job next time
+}
+
+bool
+Lexer_CheckPeeked(Lexer *lexer, const char *s)
+{
+    StrView8 sv(s);
+    return Lexer_CheckPeeked(lexer, sv);
+}
+
+bool
+Lexer_CheckPeeked(Lexer *lexer, StrView8 s)
+{
+    StrView8 peek_view = Lexer_PeekView(lexer, (int32_t)s.length);
+    return StrView8_IsEquals(peek_view, s);
+}
+
+StrView8
+Lexer_SkipUntil(Lexer *lexer, char c)
+{
+    StrView8 ret;
+
+    ret.data = lexer->cursor;
+
+    while (!Lexer_IsEnd(lexer) && lexer->lexeme != c) {
+        Lexer_Advance(lexer);
+        ret.length++;
+    }
+
+    return ret;
+}
+
+StrView8
+Lexer_SkipUntilEndline(Lexer *lexer)
+{
+    StrView8 ret;
+
+    ret.data = lexer->cursor;
+
+    bool is_crlf = false;
+
+    while (!Lexer_IsEnd(lexer) && !Lexer_IsEndline(lexer, &is_crlf)) {
+        Lexer_Advance(lexer);
+        ret.length++;
+    }
+
+    if (is_crlf) {
+        Lexer_Advance(lexer);
+        Lexer_Advance(lexer);
+    } else {
+        Lexer_Advance(lexer);
+    }
+
+    return ret;
+}
+
+bool
+Lexer_IsEndline(Lexer *lexer, bool *is_crlf)
+{
+    if (is_crlf != nullptr) {
+        *is_crlf = (lexer->cursor[0] == '\r' && lexer->cursor[1] == '\n');
+    }
+    return lexer->lexeme == '\n' || (lexer->cursor[0] == '\r' && lexer->cursor[1] == '\n');
+}
+
+void
+Lexer_SkipWhitespace(Lexer *lexer)
+{
+    while (!Lexer_IsEnd(lexer) && isspace(lexer->lexeme)) {
+        Lexer_Advance(lexer);
+    }
+}
+
+bool
+Lexer_IsEnd(Lexer *lexer)
+{
+    size_t cursor_index = lexer->cursor - lexer->buffer;
+    return cursor_index >= lexer->buffer_size;
+}
+
+
+bool
+Lexer_ParseInt(Lexer *lexer, int *result)
+{
+    // TODO(gr3yknigh1): Error handling [2025/02/23]
+
+    int num = 0;
+
+    bool is_negative = false;
+
+    if (lexer->lexeme == '-') {
+        is_negative = true;
+        Lexer_Advance(lexer);
+    }
+
+    while (lexer->lexeme && (lexer->lexeme >= '0' && lexer->lexeme <= '9')) {
+        num = num * 10 + (lexer->lexeme - '0');
+        Lexer_Advance(lexer);
+    }
+
+    if (is_negative) {
+        num = -1 * num;
+    }
+
+    *result = num;
+
+    return true;
 }
