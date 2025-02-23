@@ -1,3 +1,6 @@
 *     text eol=lf
 
 *.bat text eol=crlf
+
+*.bmp binary
+*.aseprite binary

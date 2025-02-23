@@ -63,11 +63,12 @@ static_assert(sizeof(packed_rgba_t) == 4);
 #pragma pack(push, 1)
 struct Vertex {
     float x, y;
+    float s, t;
     packed_rgba_t color;
 };
 #pragma pack(pop)
 
-static_assert(sizeof(Vertex) == (sizeof(float) * 2 + sizeof(packed_rgba_t)));
+static_assert(sizeof(Vertex) == (sizeof(float) * 4 + sizeof(packed_rgba_t)));
 
 #pragma pack(push, 1)
 struct ColorRGBA_U8 {
@@ -418,6 +419,12 @@ struct BitmapPicture {
 
 bool LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char *file_path);
 
+//
+// @pre
+//   - Bind target texture with glBindTexture(GL_TEXTURE_2D, ...);
+//
+void Gl_TextureImage2D_FromBitmapPicture(void *data, size32_t width, size32_t height, BitmapPictureCompressionMethod compression_method, GLenum internal_format);
+
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -493,7 +500,14 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     int window_height = window_rect.bottom - window_rect.top;
 
     //
-    // Game initalization
+    // OpenGL settings:
+    //
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+
+    //
+    // Game initalization:
     //
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
@@ -539,22 +553,45 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     assert(MakeVertexBufferLayout(&page_arena, &vertex_buffer_layout, 4));
 
     assert(VertexBufferLayout_PushFloat(&vertex_buffer_layout, 2));
+    assert(VertexBufferLayout_PushFloat(&vertex_buffer_layout, 2));
     assert(VertexBufferLayout_PushInt(&vertex_buffer_layout, 1));
 
     VertexBufferLayout_BuildAttributes(&vertex_buffer_layout);
 
     ResetArena(&page_arena);
 
-    // Media
-
+    //
+    // Media:
+    //
     Arena asset_arena = MakeArena(1024000);
     BitmapPicture atlas_picture;
     assert(LoadBitmapPictureFromFile(&asset_arena, &atlas_picture, "topdown_atlas.bmp"));
 
-    //
-    // Game mainloop
-    //
+    GLuint atlas_texture;
+    glGenTextures(1, &atlas_texture);
+    glBindTexture(GL_TEXTURE_2D, atlas_texture);
 
+    Gl_TextureImage2D_FromBitmapPicture(
+        atlas_picture.u.data, atlas_picture.dib_header.width, atlas_picture.dib_header.height,
+        atlas_picture.dib_header.compression_method, GL_RGBA8);
+
+    ResetArena(&asset_arena);
+
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    GLint atlas_texture_uniform_loc = glGetUniformLocation(basic_shader_program, "u_texture");
+    assert(atlas_texture_uniform_loc != -1);
+
+    glUniform1ui(atlas_texture_uniform_loc, atlas_texture);
+
+    //
+    // Game mainloop:
+    //
     Arena geometry_arena = MakeArena(sizeof(Vertex) * 1024);
 
     float player_x = 0, player_y = 0, player_speed = 300.0f;
@@ -580,6 +617,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 case WM_SYSKEYUP:
                 case WM_SYSKEYDOWN: {
                     Win32_KeyState key = Win32_ConvertMSGToKeyState(message);
+
+                    if (key.vk_code == VK_ESCAPE || key.vk_code == 0x51) {  // 0x51 - `Q` key.
+                        global_should_terminate = true;
+                    }
 
                     if (!WIN32_KEYSTATE_IS_RELEASED(&key)) {
                         if (key.vk_code == VK_LEFT) {
@@ -960,7 +1001,6 @@ VertexBufferLayout_BuildAttributes(const VertexBufferLayout *layout)
     }
 }
 
-
 Camera
 MakeCamera(Camera_ViewMode view_mode)
 {
@@ -1140,14 +1180,14 @@ GenerateRect(Vertex *vertexes, float x, float y, float width, float height, Colo
     size_t c = 0;
 
     // bottom-left triangle
-    vertexes[c++] = { x + 0    , y + 0,      MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
-    vertexes[c++] = { x + width, y + 0,      MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-right
-    vertexes[c++] = { x + width, y + height, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
+    vertexes[c++] = { x + 0    , y + 0,      0, 0, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
+    vertexes[c++] = { x + width, y + 0,      1, 0, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-right
+    vertexes[c++] = { x + width, y + height, 1, 1, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
 
     // top-right triangle
-    vertexes[c++] = { x + 0    , y + 0,      MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
-    vertexes[c++] = { x + width, y + height, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
-    vertexes[c++] = { x + 0,     y + height, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };
+    vertexes[c++] = { x + 0    , y + 0,      0, 0, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
+    vertexes[c++] = { x + width, y + height, 1, 1, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
+    vertexes[c++] = { x + 0,     y + height, 0, 1, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };
 
     return c;
 }
@@ -1289,4 +1329,22 @@ LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char *file
     fclose(file);
 
     return true;
+}
+
+void
+Gl_TextureImage2D_FromBitmapPicture(void *data, size32_t width, size32_t height, BitmapPictureCompressionMethod compression_method, GLenum internal_format)
+{
+    assert(compression_method == BitmapPictureCompressionMethod::Bitfields);
+
+    GLenum format = 0, type = 0;
+
+    if (compression_method == BitmapPictureCompressionMethod::Bitfields) {
+        format = GL_BGRA;
+        type = GL_UNSIGNED_BYTE;
+    }
+
+    // TODO(gr3yknigh1): Need to add support for more formats [2025/02/23]
+
+    assert(format && type); // NOTE(gr3yknigh1): Should not be zero [2025/02/23]
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, type, data);
 }
