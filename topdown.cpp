@@ -69,9 +69,13 @@ struct Vertex {
 
 static_assert(sizeof(Vertex) == (sizeof(float) * 2 + sizeof(packed_rgba_t)));
 
-struct Color4 {
+#pragma pack(push, 1)
+struct ColorRGBA_U8 {
     uint8_t r, g, b, a;
 };
+#pragma pack(pop)
+
+typedef ColorRGBA_U8 Color4;
 
 //
 // Perf helpers:
@@ -321,6 +325,10 @@ bool Win32_IsVkPressed(int vk);
 //
 void Win32_HandleKeyboardInput(MSG message, InputState *input_state);
 
+//
+// Time:
+//
+
 struct Clock {
     float ticks_begin;
     float ticks_end;
@@ -330,9 +338,86 @@ struct Clock {
 Clock MakeClock(void);
 float TickClock(Clock *clock);
 
+//
+// Linear:
+//
 
 float Absolute(float x);
 void NormalizeVector2F(float *x, float *y);
+
+//
+// Media:
+//
+
+enum struct BitmapPictureHeaderType : uint32_t {
+    BitmapCoreHeader = 12,
+    Os22XBitmapHeader_S = 16,
+    BitmapInfoHeader = 40,
+    BitmapV2InfoHeader = 52,
+    BitmapV3InfoHeader = 56,
+    Os22XBitmapHeader = 64,
+    BitmapV4Header = 108,
+    BitmapV5Header = 124,
+};
+
+enum struct BitmapPictureCompressionMethod : uint32_t {
+    RGB = 0,
+    RLE8 = 1,
+    RLE4 = 2,
+    Bitfields = 3,
+    JPEG = 4,
+    PNG = 5,
+    AlphaBitfields = 6,
+    CMYK = 11,
+    CMYKRLE8 = 12,
+    CMYKRLE4 = 13,
+};
+
+#pragma pack(push, 1)
+struct BitmapPictureDIBHeader {
+    BitmapPictureHeaderType header_size;
+    uint32_t width;
+    uint32_t height;
+    uint16_t planes_count;
+    uint16_t depth;
+    BitmapPictureCompressionMethod compression_method;
+    uint32_t image_size;
+    uint32_t x_pixel_per_meter;
+    uint32_t y_pixel_per_meter;
+    uint32_t color_used;
+    uint32_t color_important;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+struct BitmapPictureHeader {
+    uint16_t type;
+    uint32_t file_size;
+    uint16_t reserved[2];
+    uint32_t data_offset;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+struct ColorBGRA_U8 {
+    uint8_t b, g, r, a;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+struct BitmapPicture {
+    BitmapPictureHeader header;
+    BitmapPictureDIBHeader dib_header;
+
+    union {
+        void *data;
+        ColorBGRA_U8 *bgra;
+    } u;
+};
+#pragma pack(pop)
+
+bool LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char *file_path);
+
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -460,6 +545,12 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     ResetArena(&page_arena);
 
+    // Media
+
+    Arena asset_arena = MakeArena(1024000);
+    BitmapPicture atlas_picture;
+    assert(LoadBitmapPictureFromFile(&asset_arena, &atlas_picture, "topdown_atlas.bmp"));
+
     //
     // Game mainloop
     //
@@ -560,6 +651,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     glDeleteProgram(basic_shader_program);
 
+    FreeArena(&asset_arena);
     FreeArena(&page_arena);
     FreeArena(&geometry_arena);
 
@@ -728,8 +820,6 @@ CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type)
 
     char *string_buffer = (char *)ArenaAllocZero(arena, string_buffer_size, ARENA_ALLOC_POPABLE);
     assert(string_buffer);
-
-    memset(string_buffer, 0, string_buffer_size);
 
     fread(string_buffer, string_buffer_size, 1, file);
     fclose(file);
@@ -1172,4 +1262,31 @@ Win32_IsVkPressed(int vk)
     short state = GetKeyState(vk);
     bool result = state >> 15;
     return result;
+}
+
+
+bool
+LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char *file_path)
+{
+    FILE *file = fopen(file_path, "r");
+
+    if (file == nullptr) {
+        return false;
+    }
+
+    fread(&picture->header, sizeof(picture->header), 1, file);
+    fread(&picture->dib_header, sizeof(picture->dib_header), 1, file);
+
+    picture->u.data = ArenaAllocZero(arena, picture->header.file_size, ARENA_ALLOC_BASIC);
+    if (picture->u.data == nullptr) {
+        return false;
+    }
+
+    fseek(file, picture->header.data_offset, SEEK_SET);
+    fread(picture->u.data, picture->header.file_size, 1, file);
+    fseek(file, 0, SEEK_SET);
+
+    fclose(file);
+
+    return true;
 }
