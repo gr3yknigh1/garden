@@ -507,7 +507,7 @@ void Gl_TextureImage2D_FromBitmapPicture(void *data, size32_t width, size32_t he
 // Tilemaps:
 //
 
-enum struct TileMapImageFormat {
+enum struct TilemapImageFormat {
     Bitmap,
 };
 
@@ -517,17 +517,18 @@ struct Tilemap {
     int row_count;
     int col_count;
 
-    TileMapImageFormat format;
     int tile_x_pixel_count;
     int tile_y_pixel_count;
 
-    void *indexes;
+    int *indexes;
     size_t indexes_count;
 
-    union {
-        void *pixel_data;
-        BitmapPicture *picture;
-    } u;
+    struct {
+        TilemapImageFormat format;
+        union {
+            BitmapPicture *bitmap;
+        } u;
+    } image;
 };
 
 Tilemap *LoadTilemapFromFile(Arena *arena, const char *file_path);
@@ -683,8 +684,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     ResetArena(&asset_arena);
 
-
-    Tilemap * tilemap = LoadTilemapFromFile(&asset_arena, "demo.tilemap.tp");
+    Tilemap *tilemap = LoadTilemapFromFile(&asset_arena, "demo.tilemap.tp");
 
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
@@ -1213,6 +1213,8 @@ ArenaPop(Arena *arena, void *data)
     }
 
     size_t *data_size = ((size_t *)data) - 1;
+
+    assert((char *)data + *data_size == (char *)arena->data + arena->occupied);
     arena->occupied -= *data_size;
     arena->occupied -= sizeof(*data_size);
 
@@ -1477,6 +1479,7 @@ bool     Lexer_CheckPeeked(Lexer *lexer, const char *s);
 bool     Lexer_CheckPeeked(Lexer *lexer, StrView8 s);
 
 bool     Lexer_ParseInt(Lexer *lexer, int *result);
+bool     Lexer_ParseStrToView(Lexer *lexer, StrView8 *sv);
 
 StrView8 Lexer_SkipUntil     (Lexer *lexer, char c);
 StrView8 Lexer_SkipUntilEndline(Lexer *lexer);
@@ -1504,7 +1507,9 @@ LoadTilemapFromFile(Arena *arena, const char *file_path)
     fseek(file, 0, SEEK_SET);
     assert(file_size);
 
-    char *file_buffer = (char *)ArenaAlloc(arena, file_size, ARENA_ALLOC_POPABLE);
+    Arena file_arena = MakeArena(file_size);
+
+    char *file_buffer = (char *)ArenaAlloc(&file_arena, file_size, ARENA_ALLOC_BASIC);
     assert(file_buffer);
 
     fread(file_buffer, file_size, 1, file);
@@ -1514,36 +1519,94 @@ LoadTilemapFromFile(Arena *arena, const char *file_path)
 
     static constexpr StrView8 s_tilemap_directive = "@tilemap";
 
-    StrView8 image_path;
+    static constexpr StrView8 s_tilemap_image_bmp_format = "bmp";
+
+    StrView8 tilemap_image_path_view;
 
     while (!Lexer_IsEnd(&lexer)) {
         Lexer_SkipWhitespace(&lexer);
 
+        // NOTE(gr3yknigh1): Skipping comments [2025/02/24]
         if (Lexer_CheckPeeked(&lexer, "//")) {
             (void)Lexer_SkipUntilEndline(&lexer);
             continue;
         }
 
         if (Lexer_CheckPeeked( &lexer, s_tilemap_directive )) {
+            // TODO(gr3yknigh1): Fix this cast to signed int [2025/02/24]
             Lexer_Advance(&lexer, (int32_t)s_tilemap_directive.length);
             Lexer_SkipWhitespace(&lexer);
+
             assert(Lexer_ParseInt(&lexer, &tilemap->row_count));
             Lexer_SkipWhitespace(&lexer);
+
             assert(Lexer_ParseInt(&lexer, &tilemap->col_count));
             Lexer_SkipWhitespace(&lexer);
+
+            assert(Lexer_ParseStrToView(&lexer, &tilemap_image_path_view));
+            Lexer_SkipWhitespace(&lexer);
+
+            // TODO(gr3yknigh1): Add proper error report mechanizm. Error message in window, for example. [2025/02/24]
+            assert(Lexer_CheckPeeked( &lexer, s_tilemap_image_bmp_format ));
+            tilemap->image.format = TilemapImageFormat::Bitmap;
+            Lexer_Advance(&lexer, (int32_t)s_tilemap_image_bmp_format.length);
+
+            Lexer_SkipWhitespace(&lexer);
+
+            assert(Lexer_ParseInt(&lexer, &tilemap->tile_x_pixel_count));
+            Lexer_SkipWhitespace(&lexer);
+
+            assert(Lexer_ParseInt(&lexer, &tilemap->tile_y_pixel_count));
+            Lexer_SkipWhitespace(&lexer);
+
+            // NOTE(gr3yknigh1): Bad assumtion [2025/02/24]
+            // assert(Lexer_IsEndline(&lexer));
+
+            // TODO(gr3yknigh1): Move initialization of index array out of here [2025/02/24]
+            tilemap->indexes_count = tilemap->row_count * tilemap->col_count;
+            tilemap->indexes = (int *)ArenaAllocZero(arena, tilemap->indexes_count * sizeof(*tilemap->indexes), ARENA_ALLOC_BASIC);
+
             continue;
         }
 
         if (isdigit(lexer.lexeme)) {
-            // Handle data
+            assert(tilemap->indexes);
+
+            int *indexes_cursor = tilemap->indexes;
+
+            do {
+                size_t current_index_index = indexes_cursor - tilemap->indexes;
+                assert(current_index_index + 1 <= tilemap->indexes_count);
+
+                assert(Lexer_ParseInt(&lexer, indexes_cursor));
+                Lexer_SkipWhitespace(&lexer);
+
+                ++indexes_cursor;
+            } while(isdigit(lexer.lexeme));
+
+            size_t filled_indexes = indexes_cursor - tilemap->indexes;
+            assert(filled_indexes == tilemap->indexes_count);
         }
 
         Lexer_Advance(&lexer);
     }
 
-    assert(ArenaPop(arena, file_buffer));
+    tilemap->image.u.bitmap = (BitmapPicture *)ArenaAlloc(arena, sizeof(BitmapPicture), ARENA_ALLOC_BASIC);
 
-    fclose(file);
+    // TODO(gr3yknigh1): Factor this out [2025/02/24]
+    assert(tilemap_image_path_view.length && tilemap_image_path_view.data);
+
+    char *tilemap_image_path = (char *)HeapAlloc(GetProcessHeap(), (DWORD)(tilemap_image_path_view.length + 1), HEAP_ZERO_MEMORY);
+    assert(StrView8_CopyToNullTerminated(tilemap_image_path_view, tilemap_image_path, tilemap_image_path_view.length + 1));
+
+    // TODO(gr3yknigh1): Generalize format validation [2025/02/24]
+    assert(tilemap->image.format == TilemapImageFormat::Bitmap);
+    assert(LoadBitmapPictureFromFile(arena, tilemap->image.u.bitmap, tilemap_image_path));
+
+    assert(HeapFree(GetProcessHeap(), 0, tilemap_image_path));
+
+    assert(FreeArena(&file_arena));
+
     return tilemap;
 }
 
@@ -1711,6 +1774,24 @@ Lexer_ParseInt(Lexer *lexer, int *result)
     }
 
     *result = num;
+
+    return true;
+}
+
+bool
+Lexer_ParseStrToView(Lexer *lexer, StrView8 *sv)
+{
+    if (lexer->lexeme != '"') {
+        return false;
+    }
+
+    // NOTE(gr3yknigh1): Skipping '"' [2025/02/24]
+    Lexer_Advance(lexer); // TODO(gr3yknigh1): Wrap in `Lexer_AdvanceIf(Lexer *, int32_t count, char c)`
+
+    *sv = Lexer_SkipUntil(lexer, '"');
+
+    // NOTE(gr3yknigh1): Skipping '"' [2025/02/24]
+    Lexer_Advance(lexer); // TODO(gr3yknigh1): Wrap in `Lexer_AdvanceIf(Lexer *, int32_t count, char c)`
 
     return true;
 }
