@@ -674,6 +674,12 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     BitmapPicture atlas_picture;
     assert(LoadBitmapPictureFromFile(&asset_arena, &atlas_picture, "topdown_atlas.bmp"));
 
+    //
+    // Setup entity atlas:
+    //
+
+    glActiveTexture(GL_TEXTURE0);
+
     GLuint atlas_texture;
     glGenTextures(1, &atlas_texture);
     glBindTexture(GL_TEXTURE_2D, atlas_texture);
@@ -684,14 +690,26 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     ResetArena(&asset_arena);
 
-    Tilemap *tilemap = LoadTilemapFromFile(&asset_arena, "demo.tilemap.tp");
-
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    //
+    // Setup tilemap atlas:
+    //
+
+    // TODO(gr3yknigh1): Do it later [2025/02/25]
+#if 0
+    Tilemap *tilemap = LoadTilemapFromFile(&asset_arena, "demo.tilemap.tp");
+    glActiveTexture(GL_TEXTURE1);
+
+    GLuint tilemap_texture;
+    glGenTextures(1, &tilemap_texture);
+    glBindTexture(GL_TEXTURE_2D, tilemap_texture);
+#endif
 
     GLint atlas_texture_uniform_loc = glGetUniformLocation(basic_shader_program, "u_texture");
     assert(atlas_texture_uniform_loc != -1);
@@ -709,6 +727,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     InputState input_state;
     ZERO_STRUCT(&input_state);
+
+    uint64_t frame_counter = 0;
 
     while (!global_should_terminate) {
         float dt = TickClock(&clock);
@@ -797,6 +817,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         PERF_BLOCK_END(DRAW);
 
         ResetArena(&geometry_arena);
+
+        frame_counter++;
     }
 
     glDeleteProgram(basic_shader_program);
@@ -1388,8 +1410,9 @@ float
 TickClock(Clock *clock)
 {
     clock->ticks_end = (float)GetPerfCounter();
-    float elapsed = (clock->ticks_end - clock->ticks_begin) / clock->frequency;
+    float elapsed = Absolute(clock->ticks_end - clock->ticks_begin) / clock->frequency;
     clock->ticks_begin = (float)GetPerfCounter();
+
     return elapsed;
 }
 
@@ -1563,6 +1586,8 @@ LoadTilemapFromFile(Arena *arena, const char *file_path)
             // assert(Lexer_IsEndline(&lexer));
 
             // TODO(gr3yknigh1): Move initialization of index array out of here [2025/02/24]
+            // NOTE(gr3yknigh1): This can be fixed with adding stage with Token generation, like
+            // proper lexers does [2025/02/26]
             tilemap->indexes_count = tilemap->row_count * tilemap->col_count;
             tilemap->indexes = (int *)ArenaAllocZero(arena, tilemap->indexes_count * sizeof(*tilemap->indexes), ARENA_ALLOC_BASIC);
 
