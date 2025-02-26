@@ -364,10 +364,30 @@ VertexBufferAttribute *VertexBufferLayout_PushInt(VertexBufferLayout *layout, un
 void VertexBufferLayout_BuildAttributes(const VertexBufferLayout *layout);
 
 
+struct Rect_F32 {
+    float x;
+    float y;
+    float width;
+    float height;
+};
+
+
+// TODO(gr3yknigh1): Replace with integers? [2025/02/26]
+struct Atlas {
+    float x_pixel_count;
+    float y_pixel_count;
+};
+
+
 //
 // @param[out] rect Output array of vertexes
 //
 size_t GenerateRect(Vertex *rect, float x, float y, float width, float height, Color4 color);
+
+//
+// @param[out] rect Output array of vertexes
+//
+size_t GenerateRectAtlas(Vertex *rect, float x, float y, float width, float height, Rect_F32 atlas_location, Atlas *altas, Color4 color);
 
 struct InputState {
     float x_direction;
@@ -409,13 +429,13 @@ void Win32_HandleKeyboardInput(MSG message, InputState *input_state);
 //
 
 struct Clock {
-    float ticks_begin;
-    float ticks_end;
-    float frequency;
+    int64_t ticks_begin;
+    int64_t ticks_end;
+    int64_t frequency;
 };
 
 Clock MakeClock(void);
-float TickClock(Clock *clock);
+double TickClock(Clock *clock);
 
 //
 // Linear:
@@ -702,14 +722,12 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
 
     // TODO(gr3yknigh1): Do it later [2025/02/25]
-#if 0
-    Tilemap *tilemap = LoadTilemapFromFile(&asset_arena, "demo.tilemap.tp");
+    Tilemap *tilemap = LoadTilemapFromFile(&asset_arena, "demo.scene.td");
     glActiveTexture(GL_TEXTURE1);
 
     GLuint tilemap_texture;
     glGenTextures(1, &tilemap_texture);
     glBindTexture(GL_TEXTURE_2D, tilemap_texture);
-#endif
 
     GLint atlas_texture_uniform_loc = glGetUniformLocation(basic_shader_program, "u_texture");
     assert(atlas_texture_uniform_loc != -1);
@@ -730,8 +748,11 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     uint64_t frame_counter = 0;
 
+    /// XXX
+    static Rect_F32 atlas_location = { 0, 0, 16, 16 };
+
     while (!global_should_terminate) {
-        float dt = TickClock(&clock);
+        double dt = TickClock(&clock);
 
         MSG message;
         ZERO_STRUCT(&message);
@@ -749,6 +770,14 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
                     if (key.vk_code == VK_ESCAPE || key.vk_code == 0x51) {  // 0x51 - `Q` key.
                         global_should_terminate = true;
+                    }
+
+                    if (key.vk_code == 0x45) {  // 0x45 - `E` key
+                        atlas_location = { 0, 0, 16, 16 };
+                    }
+
+                    if (key.vk_code == 0x46) {  // 0x46 - `F` key
+                        atlas_location = { 16, 0, 16, 16 };
                     }
 
                     if (!WIN32_KEYSTATE_IS_RELEASED(&key)) {
@@ -795,8 +824,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 NormalizeVector2F(&input_state.x_direction, &input_state.y_direction);
             }
 
-            player_x += player_speed * input_state.x_direction * dt;
-            player_y += player_speed * input_state.y_direction * dt;
+            player_x += player_speed * input_state.x_direction * (float)dt;
+            player_y += player_speed * input_state.y_direction * (float)dt;
 
         PERF_BLOCK_END(UPDATE);
 
@@ -806,7 +835,12 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
             Vertex *vertexes = (Vertex *)ArenaAllocZero(&geometry_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC);
             Color4 rect_color = { 200, 100, 0, 255 };
-            size_t vertexes_count = GenerateRect(vertexes, player_x, player_y, 100, 100, rect_color);
+
+            // XXX
+            static Atlas atlas = { 32, 32 };
+
+            // size_t vertexes_count = GenerateRect(vertexes, player_x, player_y, 100, 100, rect_color);
+            size_t vertexes_count = GenerateRectAtlas(vertexes, player_x, player_y, 100, 100, atlas_location, &atlas, rect_color);
             size_t vertex_buffer_size = vertexes_count * sizeof(*vertexes);
             glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, vertexes, GL_DYNAMIC_DRAW);
 
@@ -1325,6 +1359,26 @@ GenerateRect(Vertex *vertexes, float x, float y, float width, float height, Colo
     return c;
 }
 
+// TODO(gr3yknigh1): Separate configuration at atlas and mesh size [2025/02/26]
+size_t
+GenerateRectAtlas(Vertex *vertexes, float x, float y, float width, float height, Rect_F32 loc, Atlas *atlas, Color4 color)
+{
+    size_t c = 0;
+
+
+    // bottom-left triangle
+    vertexes[c++] = { x + 0    , y + 0,      (loc.x + 0)         / atlas->x_pixel_count, (loc.y + 0)          / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
+    vertexes[c++] = { x + width, y + 0,      (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + 0)          / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-right
+    vertexes[c++] = { x + width, y + height, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
+
+    // top-right triangle
+    vertexes[c++] = { x + 0    , y + 0,      (loc.x + 0)         / atlas->x_pixel_count, (loc.y + 0)          / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
+    vertexes[c++] = { x + width, y + height, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
+    vertexes[c++] = { x + 0,     y + height, (loc.x + 0)         / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };
+
+    return c;
+}
+
 int64_t
 GetPerfFrequency(void)
 {
@@ -1399,20 +1453,19 @@ Clock
 MakeClock(void)
 {
     Clock clock;
-    clock.ticks_begin = 0;
+    clock.ticks_begin = GetPerfCounter();
     clock.ticks_end = 0;
-    clock.frequency = (float)GetPerfFrequency();
+    clock.frequency = GetPerfFrequency();
     return clock;
 }
 
 
-float
+double
 TickClock(Clock *clock)
 {
-    clock->ticks_end = (float)GetPerfCounter();
-    float elapsed = Absolute(clock->ticks_end - clock->ticks_begin) / clock->frequency;
-    clock->ticks_begin = (float)GetPerfCounter();
-
+    clock->ticks_end = GetPerfCounter();
+    double elapsed = (double)(clock->ticks_end - clock->ticks_begin) / (double)clock->frequency;
+    clock->ticks_begin = GetPerfCounter();
     return elapsed;
 }
 
