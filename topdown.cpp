@@ -6,6 +6,8 @@
 //
 // NOTICE        (c) Copyright 2025 by Ilya Akkuzin. All rights reserved.
 //
+#include <atomic>   // std::atomic_flag
+
 #include <math.h>   // sqrtf
 #include <assert.h> // assert
 #include <stdio.h>  // puts, printf, FILE, fopen, freopen, fseek, fclose
@@ -155,6 +157,62 @@ StrView8_IsEquals(StrView8 a, const char *str) noexcept
     StrView8 b(str);
     return StrView8_IsEquals(a, b);
 }
+
+constexpr size_t
+GetStrLength(const wchar_t *s) noexcept
+{
+    size_t result = 0;
+
+    while (s[result] != 0) {
+        result++;
+    }
+
+    return result;
+}
+
+struct StrView16 {
+    const wchar_t *data;
+    size_t length;
+
+    constexpr StrView16() noexcept : data(nullptr), length(0) {}
+    constexpr StrView16(const wchar_t *data_) noexcept : data(data_), length(GetStrLength(data_)) {}
+    constexpr StrView16(const wchar_t *data_, size_t length_) noexcept : data(data_), length(length_) {}
+};
+
+
+inline bool
+StrView16_CopyToNullTerminated(StrView16 view, wchar_t *out_buffer, size_t out_buffer_size) noexcept
+{
+    size_t required_buffer_size = (view.length + 1) * sizeof(*view.data);
+
+    if (required_buffer_size > out_buffer_size) {
+        return false;
+    }
+
+    memcpy((void *)out_buffer, view.data, view.length * sizeof(*view.data));
+    out_buffer[view.length] = 0;
+    return true;
+}
+
+inline bool
+StrView16_EndsWith(StrView16 view, StrView16 end) noexcept
+{
+    if (view.length < end.length) {
+        return false;
+    }
+
+    for (size_t end_index = end.length - 1, view_index = view.length - 1; end_index > 0; --end_index, --view_index) {
+        if (end.data[end_index] != view.data[view_index]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+wchar_t GetPathSeparator();
+
+bool GetPathParent(const wchar_t *path, size_t path_length, StrView16 *out);
 
 //
 // Perf helpers:
@@ -553,6 +611,36 @@ struct Tilemap {
 
 Tilemap *LoadTilemapFromFile(Arena *arena, const char *file_path);
 
+#define WATCH_EXT_NONE MAKE_FLAG(0)
+#define WATCH_EXT_BMP  MAKE_FLAG(1)
+#define WATCH_EXT_GLSL MAKE_FLAG(2)
+
+constexpr StrView16 WATCH_EXT_BMP_VIEW = L"bmp";
+constexpr StrView16 WATCH_EXT_GLSL_VIEW = L"glsl";
+
+/* https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-file_notify_information#members */
+enum struct FileAction {
+    Added           = FILE_ACTION_ADDED,
+    Removed         = FILE_ACTION_REMOVED,
+    Modified        = FILE_ACTION_MODIFIED,
+    RenamedOldName  = FILE_ACTION_RENAMED_OLD_NAME,
+    RenamedNewName  = FILE_ACTION_RENAMED_NEW_NAME,
+};
+
+typedef int watch_ext_mask_t;
+typedef void (* watch_notification_routine_t)(const StrView16 file_name, watch_ext_mask_t ext, FileAction action);
+
+struct WatchDirContext {
+    std::atomic_flag should_stop;
+    const wchar_t *target_dir;
+    watch_ext_mask_t watch_exts;
+    watch_notification_routine_t notification_routine;
+};
+
+void MakeWatchDirContext(WatchDirContext *context);
+
+void WatchDirWorker(PVOID param);
+
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
 {
@@ -625,6 +713,42 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     int window_y = window_rect.bottom;
     int window_width = window_rect.right - window_rect.left;
     int window_height = window_rect.bottom - window_rect.top;
+
+    //
+    // Hot-reload:
+    //
+    // TODO(gr3yknigh1): Wrap all string manipulation in more simple utility functions. String_Builder? [2025/03/01]
+    //
+    DWORD image_path_buffer_size = MAX_PATH * sizeof(wchar_t);
+    wchar_t *image_path_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, image_path_buffer_size);
+    assert(image_path_buffer);
+
+    DWORD bytes_written = GetModuleFileNameW(nullptr, image_path_buffer, image_path_buffer_size);
+    DWORD last_error = GetLastError();
+    assert(last_error == ERROR_SUCCESS);
+
+    StrView16 image_directory_view;
+    assert(GetPathParent(image_path_buffer, bytes_written, &image_directory_view));
+
+    wchar_t *image_directory_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, (image_directory_view.length + 1) * sizeof(*image_directory_view.data));
+    assert(image_directory_buffer);
+
+    assert(StrView16_CopyToNullTerminated(image_directory_view, image_directory_buffer, (image_directory_view.length + 1) * sizeof(*image_directory_view.data)));
+    assert(HeapFree(GetProcessHeap(), 0, image_path_buffer));
+
+    WatchDirContext watch_context;
+    MakeWatchDirContext(&watch_context);
+
+    watch_context.target_dir = image_directory_buffer; // TODO(gr3yknigh1): Do free somewhere [2025/03/01]
+    watch_context.watch_exts = WATCH_EXT_BMP | WATCH_EXT_GLSL;
+    watch_context.notification_routine = []( const StrView16 file_name, watch_ext_mask_t ext, FileAction action ) {
+        return;
+    };
+
+    DWORD watch_thread_id = 0;
+    HANDLE watch_thread = CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)WatchDirWorker, &watch_context, 0, &watch_thread_id);
+    assert(watch_thread && watch_thread != INVALID_HANDLE_VALUE);
+    // assert(HeapFree(GetProcessHeap(), 0, image_directory_buffer));
 
     //
     // OpenGL settings:
@@ -1872,4 +1996,74 @@ Lexer_ParseStrToView(Lexer *lexer, StrView8 *sv)
     Lexer_Advance(lexer); // TODO(gr3yknigh1): Wrap in `Lexer_AdvanceIf(Lexer *, int32_t count, char c)`
 
     return true;
+}
+
+bool
+GetPathParent(const wchar_t *path, size_t path_length, StrView16 *out)
+{
+
+    out->data = path;
+
+    for (size_t index = path_length - 1; index > 0; --index) {
+        wchar_t c = path[index];
+
+        if (c == GetPathSeparator()) {
+            size_t c_position = path_length - index - 1;
+            out->length = c_position - 1;
+            break;
+        }
+    }
+
+    return true;
+}
+
+wchar_t
+GetPathSeparator()
+{
+    // TODO(gr3yknigh1): Add support for other platform [2025/03/01]
+    return L'\\';
+}
+
+void
+MakeWatchDirContext(WatchDirContext *context)
+{
+    ZERO_STRUCT(context);
+    context->should_stop.clear();
+}
+
+void
+WatchDirWorker(PVOID param)
+{
+    WatchDirContext *context = (WatchDirContext *)param;
+
+    HANDLE watch_dir = CreateFileW(context->target_dir,
+        FILE_LIST_DIRECTORY, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    assert(watch_dir && watch_dir != INVALID_HANDLE_VALUE);
+
+    DWORD file_notify_info_buffer_size = sizeof(FILE_NOTIFY_INFORMATION) * 1024;
+    FILE_NOTIFY_INFORMATION *file_notify_info = (FILE_NOTIFY_INFORMATION *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, file_notify_info_buffer_size);
+    assert(file_notify_info);
+    // TODO(gr3yknigh1): Fix allocation strategy here. Maybe try to
+    // iterate in fixed buffer? [2025/03/01]
+
+    while (!context->should_stop.test()) {
+        DWORD bytes_returned = 0;
+        assert(ReadDirectoryChangesW(
+            watch_dir, file_notify_info, file_notify_info_buffer_size, true,
+            FILE_NOTIFY_CHANGE_LAST_WRITE, &bytes_returned, nullptr, nullptr
+        ));
+
+        if (context->notification_routine != nullptr) {
+            StrView16 file_name(file_notify_info->FileName, file_notify_info->FileNameLength / sizeof(*file_notify_info->FileName));
+
+            if ( (HAS_FLAG(context->watch_exts, WATCH_EXT_BMP)  && StrView16_EndsWith(file_name, WATCH_EXT_BMP_VIEW ) )
+              || (HAS_FLAG(context->watch_exts, WATCH_EXT_GLSL) && StrView16_EndsWith(file_name, WATCH_EXT_GLSL_VIEW) )) {
+                context->notification_routine(file_name, 0, (FileAction)file_notify_info->Action);
+            }
+
+        }
+    }
+
+    assert(HeapFree(GetProcessHeap(), 0, file_notify_info));
 }
