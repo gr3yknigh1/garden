@@ -1,4 +1,7 @@
-# Editors & tools
+
+#
+# Editors & tools:
+#
 
 ## Vim
 *.swp
@@ -42,19 +45,28 @@ out/
 ## Notepad++
 *.bak
 
-# Build artefacts
+#
+# Build artefacts:
+#
 [Bb]uild/
 *.exe
 *.pdb
 *.ilk
 *.obj
 
+## Preprocessor output
+*.i
+
 ## CMake
 CMake*Presets.json
 
-# Documentation
+#
+# Documentation:
+#
 
-# Python
+#
+# Python:
+#
 __pycache__
 *.egg-info
 
@@ -65,7 +77,8 @@ venv
 venv-*
 .venv-*
 
-
-# Runtime
+#
+# Runtime:
+#
 imgui.ini
 .env

@@ -79,6 +79,9 @@ def extract_environment_from_bootstrap_script(arch="x64", bootstrap_script: Opti
     if bootstrap_script is None:
         bootstrap_script = find_vc_bootstrap_script()
 
+        if boostrap_script is None:
+            return {}
+
     if environment_vars is None:
         environment_vars = DEFAULT_VC_BOOSTRAP_VARS
 
@@ -108,8 +111,13 @@ glm_library: F[[str], str] = lambda build_type: join(glm_output_dir(build_type),
 # Tasks:
 #
 
+def quote_path(s: str) -> str:
+    s = repr(s)
+    s = s.replace("'", '"')
+    return s
+
 @task(default=True)
-def build(c, build_type=default_build_type, clean=False, reconfigure=False):
+def build(c, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False):
     """Builds entire project.
     """
     if clean:
@@ -150,13 +158,18 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False):
     # TODO(i.akkuzin): Make release configuration build. Currently we using `/Od` flag, which disables any optimizations and link with debug runtime (/MTd). [2025/02/08]
     # TODO(i.akkuzin): Remove _CRT_SECURE_NO_WARNINGS [2025/02/08]
 
-    flags = "/MTd /Zi /DEBUG:FULL /std:c++20 /W4 /Od /GR- /Oi"
+    flags = [
+        "/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"
+    ]
+
+    if only_preprocessor:
+        flags.append("/P")
 
     defs = " ".join([
         "/D_CRT_SECURE_NO_WARNINGS",
         "/DUNICODE=1",
         "/D_UNICODE=1",
-        f"/D GARDEN_ASSET_DIR={assets_dir!s}",
+        f"/D GARDEN_ASSET_DIR={quote_path(assets_dir)}",
     ])
 
     libs = " ".join([
@@ -179,5 +192,5 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False):
 
     output = join(output_dir(build_type), "garden.exe")
 
-    c.run(f"cl.exe {flags} {defs} {sources} /Fe:{output} {includes} {libs}", env=build_env)
+    c.run(f"cl.exe {' '.join(flags)} {defs} {sources} /Fe:{output} {includes} {libs}", env=build_env)
     # link.exe topdown.obj /MACHINE:X64 /SUBSYSTEM:WINDOWS /Fe:topdown.exe
