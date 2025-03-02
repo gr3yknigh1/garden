@@ -13,14 +13,16 @@ from os import environ
 from os.path import exists, join, dirname, realpath
 import subprocess
 
-from invoke import task
+from invoke import task, Collection
 
 F = Callable
+
+default_build_type = "Debug"
 
 project_dir: str = dirname(realpath(__file__))
 assets_dir: str = join(project_dir, "assets")
 code_dir: str = join(project_dir, "code")
-output_dir: str = lambda build_type: join(project_dir, "build", build_type)
+output_dir: F[[str], str] = lambda build_type: join(project_dir, "build", build_type)
 
 #
 # VS utilities
@@ -89,26 +91,32 @@ glm_folder = join(project_dir, "glm")
 glm_configuration = join(glm_folder, "build")
 glm_library: F[[str], str] = lambda build_type: join(glm_configuration, "glm", build_type, "glm.lib")
 
-
 #
-# Actual tasks:
+# Tasks:
 #
 
-@task
-def build_dependencies(c, build_type="Debug", clean=False):
+@task(default=True)
+def build(c, build_type=default_build_type, clean=False, reconfigure=False):
+    """Builds entire project.
+    """
     if clean:
         c.run(f"rmdir /S /Q {glm_library(build_type)}")
+        c.run("rmdir /S /Q {output_dir(build_type)}")
+
+    #
+    # GLM:
+    #
 
     if not clean and exists(glm_library(build_type)):
         print("I: GLM already built")
-        return
+    else:
+        print("I: Building GLM...")
+        c.run(f"cmake -B {glm_configuration} -S {glm_folder} -D GLM_BUILD_TESTS=OFF -D BUILD_SHARED_LIBS=OFF")
+        c.run(f"cmake --build {glm_configuration} --config {build_type}")
 
-    c.run(f"cmake -B {glm_configuration} -S {glm_folder} -D GLM_BUILD_TESTS=OFF -D BUILD_SHARED_LIBS=OFF")
-    c.run(f"cmake --build {glm_configuration} --config {build_type}")
-
-
-@task(build_dependencies)
-def build(c, build_type="Debug", clean=False, reconfigure=False):
+    #
+    # Garden:
+    #
 
     if not exists(output_dir(build_type)):
         c.run(f"mkdir {output_dir(build_type)}")
