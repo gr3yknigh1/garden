@@ -25,8 +25,14 @@
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
+#if !defined(STRIGIFY)
+    #define STRINGIFY(X) #X
+#endif
+
 #if !defined(GARDEN_ASSET_DIR)
-#error "Dev asset directory is not defined!"
+    #error "Dev asset directory is not defined!"
+#else
+    #pragma message( "Using asset dir: " STRINGIFY(GARDEN_ASSET_DIR) )
 #endif
 
 #if !defined(MAKE_FLAG)
@@ -43,10 +49,6 @@
     #else
         #define LITERAL(X) (X)
     #endif
-#endif
-
-#if !defined(STRIGIFY)
-    #define STRINGIFY(X) #X
 #endif
 
 #if !defined(STATIC_ARRAY_COUNT)
@@ -774,8 +776,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     Arena shader_compilation_arena = MakeArena(1024 * 10);
 
-    GLuint basic_vert_shader = CompileShaderFromFile(&shader_compilation_arena, GARDEN_ASSET_DIR "basic.vert.glsl", GL_VERTEX_SHADER);
-    GLuint basic_frag_shader = CompileShaderFromFile(&shader_compilation_arena, GARDEN_ASSET_DIR "basic.frag.glsl", GL_FRAGMENT_SHADER);
+    GLuint basic_vert_shader = CompileShaderFromFile(&shader_compilation_arena, STRINGIFY(GARDEN_ASSET_DIR) "basic.vert.glsl", GL_VERTEX_SHADER);
+    GLuint basic_frag_shader = CompileShaderFromFile(&shader_compilation_arena, STRINGIFY(GARDEN_ASSET_DIR) "basic.frag.glsl", GL_FRAGMENT_SHADER);
     GLuint basic_shader_program = LinkShaderProgram(&shader_compilation_arena, basic_vert_shader, basic_frag_shader);
 
     FreeArena(&shader_compilation_arena);
@@ -827,7 +829,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     Arena asset_arena = MakeArena(1024000);
     BitmapPicture atlas_picture;
-    assert(LoadBitmapPictureFromFile(&asset_arena, &atlas_picture, GARDEN_ASSET_DIR "garden_atlas.bmp"));
+    assert(LoadBitmapPictureFromFile(&asset_arena, &atlas_picture, STRINGIFY(GARDEN_ASSET_DIR) "garden_atlas.bmp"));
 
     //
     // Setup entity atlas:
@@ -1014,7 +1016,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, reload_context.texture_id);
 
-                assert(LoadBitmapPictureFromFile(reload_context.arena, reload_context.picture, GARDEN_ASSET_DIR "garden_atlas.bmp"));
+                assert(LoadBitmapPictureFromFile(reload_context.arena, reload_context.picture, STRINGIFY(GARDEN_ASSET_DIR) "garden_atlas.bmp"));
 
                 Gl_TextureImage2D_FromBitmapPicture(
                     reload_context.picture->u.data, reload_context.picture->dib_header.width, reload_context.picture->dib_header.height,

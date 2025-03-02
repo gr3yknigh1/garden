@@ -16,7 +16,8 @@ if [%build_type%]==[] set build_type=Debug
 
 set project_folder=%~dp0
 set configuration_folder=%project_folder%build
-set assets_folder=%project_folder%assets
+set assets_folder=P:/garden/assets
+:: %project_folder%assets
 set code_folder=%project_folder%code
 set output_folder=%configuration_folder%\%build_type%
 
@@ -61,7 +62,7 @@ if not exist %output_folder% (
 )
 
 cl.exe ^
- /MTd /D_CRT_SECURE_NO_WARNINGS /DUNICODE=1 /D_UNICODE=1 /DGARDEN_ASSET_DIR=%assets_folder% ^
+ /MTd /D_CRT_SECURE_NO_WARNINGS /DUNICODE=1 /D_UNICODE=1 /D GARDEN_ASSET_DIR="%assets_folder%" ^
  /Zi /DEBUG:FULL /std:c++20 /W4 /Od /GR- /Oi ^
  /Fe:%output_folder%\garden.exe %code_folder%\garden.cpp %project_folder%glad\glad.c %project_folder%glad\glad_wgl.c ^
  /I%project_folder%glad /I%project_folder%glm ^
