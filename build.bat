@@ -9,14 +9,16 @@
 
 @echo off
 
-
-set project_folder=%~dp0
-set configuration_folder=%project_folder%\build
-
 set build_type=%1
 shift
 
 if [%build_type%]==[] set build_type=Debug
+
+set project_folder=%~dp0
+set configuration_folder=%project_folder%build
+set assets_folder=%project_folder%assets
+set code_folder=%project_folder%code
+set output_folder=%configuration_folder%\%build_type%
 
 :: Detect vcvarsall for x64 build...
 set vc2022_bootstrap="C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat"
@@ -54,9 +56,14 @@ if exist %glm_lib% (
   cmake --build %glm_configuration% --config %build_type%
 )
 
+if not exist %output_folder% (
+  mkdir %output_folder%
+)
+
 cl.exe ^
- /MTd /D_CRT_SECURE_NO_WARNINGS /DUNICODE=1 /D_UNICODE=1 /Zi /DEBUG:FULL /std:c++20 /W4 /Od /GR- /Oi ^
- /Fe:topdown.exe topdown.cpp glad\glad.c glad\glad_wgl.c ^
+ /MTd /D_CRT_SECURE_NO_WARNINGS /DUNICODE=1 /D_UNICODE=1 /DGARDEN_ASSET_DIR=%assets_folder% ^
+ /Zi /DEBUG:FULL /std:c++20 /W4 /Od /GR- /Oi ^
+ /Fe:%output_folder%\garden.exe %code_folder%\garden.cpp %project_folder%glad\glad.c %project_folder%glad\glad_wgl.c ^
  /I%project_folder%glad /I%project_folder%glm ^
  kernel32.lib user32.lib gdi32.lib ^
  %glm_lib%

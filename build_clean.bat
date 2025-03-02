@@ -13,12 +13,11 @@ set project_folder=%~dp0
 
 echo I: Cleaning...
 
-del %project_folder%*.exe
-del %project_folder%*.ilk
 del %project_folder%*.obj
 del %project_folder%*.pdb
 
 rmdir /S /Q %project_folder%glm\build
+rmdir /S /Q %project_folder%build
 
 echo I: Done!
 

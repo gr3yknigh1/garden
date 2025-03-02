@@ -1,5 +1,5 @@
 //
-// FILE         topdown.cpp
+// FILE          garden.cpp
 //
 // AUTHORS
 //               Ilya Akkuzin <gr3yknigh1@gmail.com>
@@ -24,6 +24,10 @@
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
+
+#if !defined(GARDEN_ASSET_DIR)
+#error "Dev asset directory is not defined!"
+#endif
 
 #if !defined(MAKE_FLAG)
     #define MAKE_FLAG(INDEX) (1 << (INDEX))
@@ -673,6 +677,10 @@ void MakeWatchDirContext(WatchDirContext *context);
 
 void WatchDirWorker(PVOID param);
 
+//
+// Assets:
+//
+
 struct AssetReloadContext {
     Arena *arena;
     BitmapPicture *picture; //  TODO(gr3yknigh1): Make it generic-asset [2025/03/01]
@@ -689,8 +697,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Window initialization
     //
-    const wchar_t *window_class_name = L"topdown";
-    const wchar_t *window_title = L"topdown";
+    const wchar_t *window_class_name = L"garden";
+    const wchar_t *window_title = L"garden";
 
     WNDCLASSW window_class;
     ZERO_STRUCT(&window_class);
@@ -766,8 +774,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     Arena shader_compilation_arena = MakeArena(1024 * 10);
 
-    GLuint basic_vert_shader = CompileShaderFromFile(&shader_compilation_arena, "basic.vert.glsl", GL_VERTEX_SHADER);
-    GLuint basic_frag_shader = CompileShaderFromFile(&shader_compilation_arena, "basic.frag.glsl", GL_FRAGMENT_SHADER);
+    GLuint basic_vert_shader = CompileShaderFromFile(&shader_compilation_arena, GARDEN_ASSET_DIR "basic.vert.glsl", GL_VERTEX_SHADER);
+    GLuint basic_frag_shader = CompileShaderFromFile(&shader_compilation_arena, GARDEN_ASSET_DIR "basic.frag.glsl", GL_FRAGMENT_SHADER);
     GLuint basic_shader_program = LinkShaderProgram(&shader_compilation_arena, basic_vert_shader, basic_frag_shader);
 
     FreeArena(&shader_compilation_arena);
@@ -819,7 +827,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     Arena asset_arena = MakeArena(1024000);
     BitmapPicture atlas_picture;
-    assert(LoadBitmapPictureFromFile(&asset_arena, &atlas_picture, "topdown_atlas.bmp"));
+    assert(LoadBitmapPictureFromFile(&asset_arena, &atlas_picture, GARDEN_ASSET_DIR "garden_atlas.bmp"));
 
     //
     // Setup entity atlas:
@@ -878,7 +886,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     watch_context.watch_exts = WATCH_EXT_BMP;
     watch_context.parameter = &reload_context;
     watch_context.notification_routine = []( const StrView16 file_name, watch_ext_mask_t ext, FileAction action, void *parameter ) {
-        if (action != FileAction::Modified /* || ext != WATCH_EXT_BMP */ || !StrView16_IsEquals(file_name, L"topdown_atlas.bmp")) {
+        if (action != FileAction::Modified /* || ext != WATCH_EXT_BMP */ || !StrView16_IsEquals(file_name, L"garden_atlas.bmp")) {
             return;
         }
         AssetReloadContext *context = (AssetReloadContext *)parameter;
@@ -1006,7 +1014,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, reload_context.texture_id);
 
-                assert(LoadBitmapPictureFromFile(reload_context.arena, reload_context.picture, "topdown_atlas.bmp"));
+                assert(LoadBitmapPictureFromFile(reload_context.arena, reload_context.picture, GARDEN_ASSET_DIR "garden_atlas.bmp"));
 
                 Gl_TextureImage2D_FromBitmapPicture(
                     reload_context.picture->u.data, reload_context.picture->dib_header.width, reload_context.picture->dib_header.height,

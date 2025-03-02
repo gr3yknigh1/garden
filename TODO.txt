@@ -13,8 +13,8 @@ Demos:
   It will be very thin at first: maybe expose OpenGL API?
 
   Rendering:
-    - Quads
-    - Atlas texture render
+    - Quads                       [V]
+    - Atlas texture render        [V]
 
   Audio:
     - .wav file support
@@ -22,5 +22,8 @@ Demos:
 
   Gameplay:
     - 2D Quad Collisions
+
+  Etc:
+    - Hot-reload of assets (proto) [V]
 
 ======================================================================================
