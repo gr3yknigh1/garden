@@ -6,6 +6,18 @@
 #
 # NOTICE        (c) Copyright 2025 by Ilya Akkuzin. All rights reserved.
 #
+# HOW TO USE?
+#
+#    * Install `pyinvoke`:
+#
+#        > python3 -m pip install invoke
+#
+#    * Call build task:
+#
+#        > inv build --build-type Debug
+#
+#    * Done!
+#
 
 from typing import Callable, Optional, Any, Dict, List
 
@@ -89,7 +101,8 @@ def extract_environment_from_bootstrap_script(arch="x64", bootstrap_script: Opti
 
 glm_folder = join(project_dir, "glm")
 glm_configuration = join(glm_folder, "build")
-glm_library: F[[str], str] = lambda build_type: join(glm_configuration, "glm", build_type, "glm.lib")
+glm_output_dir: F[[str], str] = lambda build_type: join(glm_configuration, "glm", build_type)
+glm_library: F[[str], str] = lambda build_type: join(glm_output_dir(build_type), "glm.lib")
 
 #
 # Tasks:
@@ -100,8 +113,12 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False):
     """Builds entire project.
     """
     if clean:
-        c.run(f"rmdir /S /Q {glm_library(build_type)}")
-        c.run("rmdir /S /Q {output_dir(build_type)}")
+
+        if exists(glm_output_dir(build_type)):
+            c.run(f"rmdir /S /Q {glm_output_dir(build_type)}")
+
+        if exists(output_dir(build_type)):
+            c.run(f"rmdir /S /Q {output_dir(build_type)}")
 
     #
     # GLM:
@@ -161,7 +178,6 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False):
     ])
 
     output = join(output_dir(build_type), "garden.exe")
-
 
     c.run(f"cl.exe {flags} {defs} {sources} /Fe:{output} {includes} {libs}", env=build_env)
     # link.exe topdown.obj /MACHINE:X64 /SUBSYSTEM:WINDOWS /Fe:topdown.exe
