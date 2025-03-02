@@ -210,6 +210,33 @@ StrView16_EndsWith(StrView16 view, StrView16 end) noexcept
     return true;
 }
 
+
+constexpr bool
+StrView16_IsEquals(StrView16 a, StrView16 b) noexcept
+{
+    if (a.length != b.length) {
+        return false;
+    }
+
+    // TODO(gr3yknigh1): Do vectorization [2025/01/03]
+    for (size_t i = 0; i < a.length; ++i) {
+        if (a.data[i] != b.data[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+constexpr bool
+StrView16_IsEquals(StrView16 a, const wchar_t *str) noexcept
+{
+    StrView16 b(str);
+    return StrView16_IsEquals(a, b);
+}
+
+
 wchar_t GetPathSeparator();
 
 bool GetPathParent(const wchar_t *path, size_t path_length, StrView16 *out);
@@ -581,6 +608,10 @@ bool LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char 
 //
 void Gl_TextureImage2D_FromBitmapPicture(void *data, size32_t width, size32_t height, BitmapPictureCompressionMethod compression_method, GLenum internal_format);
 
+
+void Gl_ClearErrors();
+void Gl_DieOnError(void);
+
 //
 // Tilemaps:
 //
@@ -628,18 +659,26 @@ enum struct FileAction {
 };
 
 typedef int watch_ext_mask_t;
-typedef void (* watch_notification_routine_t)(const StrView16 file_name, watch_ext_mask_t ext, FileAction action);
+typedef void (* watch_notification_routine_t)(const StrView16 file_name, watch_ext_mask_t ext, FileAction action, void *parameter);
 
 struct WatchDirContext {
     std::atomic_flag should_stop;
     const wchar_t *target_dir;
     watch_ext_mask_t watch_exts;
     watch_notification_routine_t notification_routine;
+    void *parameter;
 };
 
 void MakeWatchDirContext(WatchDirContext *context);
 
 void WatchDirWorker(PVOID param);
+
+struct AssetReloadContext {
+    Arena *arena;
+    BitmapPicture *picture; //  TODO(gr3yknigh1): Make it generic-asset [2025/03/01]
+    GLuint texture_id;
+    std::atomic_flag should_reload;
+};
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -715,47 +754,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     int window_height = window_rect.bottom - window_rect.top;
 
     //
-    // Hot-reload:
-    //
-    // TODO(gr3yknigh1): Wrap all string manipulation in more simple utility functions. String_Builder? [2025/03/01]
-    //
-    DWORD image_path_buffer_size = MAX_PATH * sizeof(wchar_t);
-    wchar_t *image_path_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, image_path_buffer_size);
-    assert(image_path_buffer);
-
-    DWORD bytes_written = GetModuleFileNameW(nullptr, image_path_buffer, image_path_buffer_size);
-    DWORD last_error = GetLastError();
-    assert(last_error == ERROR_SUCCESS);
-
-    StrView16 image_directory_view;
-    assert(GetPathParent(image_path_buffer, bytes_written, &image_directory_view));
-
-    wchar_t *image_directory_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, (image_directory_view.length + 1) * sizeof(*image_directory_view.data));
-    assert(image_directory_buffer);
-
-    assert(StrView16_CopyToNullTerminated(image_directory_view, image_directory_buffer, (image_directory_view.length + 1) * sizeof(*image_directory_view.data)));
-    assert(HeapFree(GetProcessHeap(), 0, image_path_buffer));
-
-    WatchDirContext watch_context;
-    MakeWatchDirContext(&watch_context);
-
-    watch_context.target_dir = image_directory_buffer; // TODO(gr3yknigh1): Do free somewhere [2025/03/01]
-    watch_context.watch_exts = WATCH_EXT_BMP | WATCH_EXT_GLSL;
-    watch_context.notification_routine = []( const StrView16 file_name, watch_ext_mask_t ext, FileAction action ) {
-        return;
-    };
-
-    DWORD watch_thread_id = 0;
-    HANDLE watch_thread = CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)WatchDirWorker, &watch_context, 0, &watch_thread_id);
-    assert(watch_thread && watch_thread != INVALID_HANDLE_VALUE);
-    // assert(HeapFree(GetProcessHeap(), 0, image_directory_buffer));
-
-    //
     // OpenGL settings:
     //
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
 
     //
     // Game initalization:
@@ -814,6 +816,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Media:
     //
+
     Arena asset_arena = MakeArena(1024000);
     BitmapPicture atlas_picture;
     assert(LoadBitmapPictureFromFile(&asset_arena, &atlas_picture, "topdown_atlas.bmp"));
@@ -840,6 +843,53 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    //
+    // Hot-reload: Setup
+    //
+    // TODO(gr3yknigh1): Wrap all string manipulation in more simple utility functions. String_Builder? [2025/03/01]
+    //
+    DWORD image_path_buffer_size = MAX_PATH * sizeof(wchar_t);
+    wchar_t *image_path_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, image_path_buffer_size);
+    assert(image_path_buffer);
+
+    DWORD bytes_written = GetModuleFileNameW(nullptr, image_path_buffer, image_path_buffer_size);
+    DWORD last_error = GetLastError();
+    assert(last_error == ERROR_SUCCESS);
+
+    StrView16 image_directory_view;
+    assert(GetPathParent(image_path_buffer, bytes_written, &image_directory_view));
+
+    wchar_t *image_directory_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, (image_directory_view.length + 1) * sizeof(*image_directory_view.data));
+    assert(image_directory_buffer);
+
+    assert(StrView16_CopyToNullTerminated(image_directory_view, image_directory_buffer, (image_directory_view.length + 1) * sizeof(*image_directory_view.data)));
+    assert(HeapFree(GetProcessHeap(), 0, image_path_buffer));
+
+    WatchDirContext watch_context;
+    MakeWatchDirContext(&watch_context);
+
+    AssetReloadContext reload_context;
+    reload_context.texture_id = atlas_texture;
+    reload_context.arena = &asset_arena;
+    reload_context.picture = &atlas_picture;
+
+    watch_context.target_dir = image_directory_buffer; // TODO(gr3yknigh1): Do free somewhere [2025/03/01]
+    watch_context.watch_exts = WATCH_EXT_BMP;
+    watch_context.parameter = &reload_context;
+    watch_context.notification_routine = []( const StrView16 file_name, watch_ext_mask_t ext, FileAction action, void *parameter ) {
+        if (action != FileAction::Modified /* || ext != WATCH_EXT_BMP */ || !StrView16_IsEquals(file_name, L"topdown_atlas.bmp")) {
+            return;
+        }
+        AssetReloadContext *context = (AssetReloadContext *)parameter;
+        context->should_reload.test_and_set();
+        return;
+    };
+
+    DWORD watch_thread_id = 0;
+    HANDLE watch_thread = CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)WatchDirWorker, &watch_context, 0, &watch_thread_id);
+    assert(watch_thread && watch_thread != INVALID_HANDLE_VALUE);
+    // assert(HeapFree(GetProcessHeap(), 0, image_directory_buffer));
 
     //
     // Setup tilemap atlas:
@@ -941,7 +991,36 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
             break;
         }
 
+
+        //
+        // Update:
+        //
+
         PERF_BLOCK_BEGIN(UPDATE);
+
+            //
+            // Hot reload: Actual reload
+            //
+            if (reload_context.should_reload.test()) {
+                reload_context.should_reload.clear();
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, reload_context.texture_id);
+
+                assert(LoadBitmapPictureFromFile(reload_context.arena, reload_context.picture, "topdown_atlas.bmp"));
+
+                Gl_TextureImage2D_FromBitmapPicture(
+                    reload_context.picture->u.data, reload_context.picture->dib_header.width, reload_context.picture->dib_header.height,
+                    reload_context.picture->dib_header.compression_method, GL_RGBA8);
+
+                ResetArena(reload_context.arena);
+
+                glGenerateMipmap(GL_TEXTURE_2D);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            }
 
             if (Absolute(input_state.x_direction) >= 1.0f && Absolute(input_state.y_direction) >= 1.0f) {
                 // TODO(gr3yknigh1): Fix strange floating-point bug for diagonal movement [2025/02/20]
@@ -952,6 +1031,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
             player_y += player_speed * input_state.y_direction * (float)dt;
 
         PERF_BLOCK_END(UPDATE);
+
+        //
+        // Draw:
+        //
 
         PERF_BLOCK_BEGIN(DRAW);
 
@@ -987,6 +1070,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     assert(FreeLibrary(opengl_module));
     CloseWindow(window); // TODO(gr3yknigh1): why it fails? [2025/02/23]
+
+    // WaitForSingleObject(watch_thread, INFINITE); // TODO(gr3yknigh1): Wait for thread [2025/02/23]
 
     return 0;
 }
@@ -2059,11 +2144,29 @@ WatchDirWorker(PVOID param)
 
             if ( (HAS_FLAG(context->watch_exts, WATCH_EXT_BMP)  && StrView16_EndsWith(file_name, WATCH_EXT_BMP_VIEW ) )
               || (HAS_FLAG(context->watch_exts, WATCH_EXT_GLSL) && StrView16_EndsWith(file_name, WATCH_EXT_GLSL_VIEW) )) {
-                context->notification_routine(file_name, 0, (FileAction)file_notify_info->Action);
+                context->notification_routine(file_name, 0, (FileAction)file_notify_info->Action, context->parameter);
             }
 
         }
     }
 
     assert(HeapFree(GetProcessHeap(), 0, file_notify_info));
+}
+
+void
+Gl_ClearErrors(void)
+{
+    while (glGetError() != GL_NO_ERROR) {
+    }
+}
+
+void
+Gl_DieOnError(void)
+{
+    GLenum errorCode = GL_NO_ERROR;
+    while ((errorCode = glGetError()) != GL_NO_ERROR) {
+        printf("E: GL: Error code=(%i)\n", errorCode);
+        DebugBreak(); // XXX
+        ExitProcess(1);
+    }
 }
