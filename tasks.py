@@ -24,6 +24,7 @@ from typing import Callable, Any, TYPE_CHECKING
 from os import environ
 from os.path import exists, join, dirname, realpath
 import subprocess
+import time
 
 from invoke import task, Collection, Context
 
@@ -167,39 +168,50 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
         join(project_dir, "glad", "glad_wgl.c"),
     ]
 
-    c.run("echo I: Compiling platform layer...")
-
-    msvc_compile(
-        c, sources,
-        output=join(output_dir(build_type), "garden.exe"),
-        libs=["kernel32.lib", "user32.lib", "gdi32.lib", glm_library(build_type)],
-        defines=dict(
-            _CRT_SECURE_NO_WARNINGS=1,
-            GARDEN_ASSET_DIR=quote_path(assets_dir),
-            GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
-        ),
-        includes=[
-            join(project_dir, "glad"),
-            glm_folder,
-        ],
-        flags=["/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"],
-        env=build_env,
-        only_preprocessor=only_preprocessor, unicode_support=True
-    )
-
     c.run("echo I: Compiling game code...")
+
+    common_flags = ["/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"]
 
     msvc_compile(
         c, [ join(code_dir, "gameplay.cpp") ],
         output=join(output_dir(build_type), GAMEPLAY_DLL_NAME),
+        includes=[
+            join(project_dir, "glad")
+        ],
         defines=dict(
             GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME
         ),
         libs=[],
-        flags=["/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"],
+        flags=[*common_flags],
+        # link_flags=[f"/PDB:garden_gameplay.{time.time()}.pdb"],
         env=build_env,
         only_preprocessor=only_preprocessor, unicode_support=True, is_dll=True
     )
+
+    garden_output_exe = join(output_dir(build_type), "garden.exe")
+
+    if not is_file_busy(garden_output_exe):
+        c.run("echo I: Compiling platform runtime...")
+
+        msvc_compile(
+            c, sources,
+            output=garden_output_exe,
+            libs=["kernel32.lib", "user32.lib", "gdi32.lib", glm_library(build_type)],
+            defines=dict(
+                _CRT_SECURE_NO_WARNINGS=1,
+                GARDEN_ASSET_DIR=quote_path(assets_dir),
+                GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
+            ),
+            includes=[
+                join(project_dir, "glad"),
+                glm_folder,
+            ],
+            flags=[*common_flags],
+            env=build_env,
+            only_preprocessor=only_preprocessor, unicode_support=True
+        )
+    else:
+        c.run("echo W: Skipping platform runtime because {} is busy...".format(garden_output_exe))
 
     # link.exe topdown.obj /MACHINE:X64 /SUBSYSTEM:WINDOWS /Fe:topdown.exe
 
@@ -285,3 +297,11 @@ def msvc_compile(
         f"cl.exe {options}",
         env=env, **kw
     )
+
+
+def is_file_busy(file: str, mode: str="w") -> bool:
+    try:
+        with open(file, mode=mode):
+            return False
+    except IOError:
+        return True

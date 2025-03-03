@@ -1,4 +1,4 @@
-
+#include <stdio.h>
 
 #include <windows.h>
 
@@ -11,6 +11,8 @@ struct Game_Context {
 extern "C" __declspec(dllexport) void *
 game_on_init(Platform_Context *platform)
 {
+    (void)platform;
+
     static Game_Context context;
 
     return &context;
@@ -19,16 +21,24 @@ game_on_init(Platform_Context *platform)
 extern "C" __declspec(dllexport) void
 game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
 {
+    (void)platform;
+    (void)game;
+    (void)delta_time;
 }
 
 extern "C" __declspec(dllexport) void
 game_on_draw(Platform_Context *platform, Game_Context *game, float delta_time)
 {
+    (void)platform;
+    (void)game;
+    (void)delta_time;
 }
 
 extern "C" __declspec(dllexport) void
 game_on_fini(Platform_Context *platform, Game_Context *game)
 {
+    (void)platform;
+    (void)game;
 }
 
 //
@@ -38,6 +48,9 @@ game_on_fini(Platform_Context *platform, Game_Context *game)
 extern "C" BOOL WINAPI
 DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
 {
+    (void)instance;
+    (void)reserved;
+
     switch(reason) {
         case DLL_PROCESS_ATTACH:
         case DLL_THREAD_ATTACH:

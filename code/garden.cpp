@@ -661,9 +661,11 @@ Tilemap *load_tilemap_from_file(Arena *arena, const char *file_path);
 #define WATCH_EXT_NONE MAKE_FLAG(0)
 #define WATCH_EXT_BMP  MAKE_FLAG(1)
 #define WATCH_EXT_GLSL MAKE_FLAG(2)
+#define WATCH_EXT_DLL  MAKE_FLAG(3)
 
 constexpr Str16_View WATCH_EXT_BMP_VIEW = L"bmp";
 constexpr Str16_View WATCH_EXT_GLSL_VIEW = L"glsl";
+constexpr Str16_View WATCH_EXT_DLL_VIEW = L"dll";
 
 /* https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-file_notify_information#members */
 enum struct File_Action {
@@ -693,12 +695,25 @@ void watch_dir_thread_worker(PVOID param);
 // Assets:
 //
 
-struct Asset_Reload_Context {
+struct Reload_Context {
     Arena *arena;
     Bitmap_Picture *picture; //  TODO(gr3yknigh1): Make it generic-asset [2025/03/01]
     GLuint texture_id;
     std::atomic_flag should_reload;
+    std::atomic_flag should_reload_gameplay;
 };
+
+struct Gameplay {
+    HMODULE module;
+
+    Game_On_Init_Fn_Type * on_init;
+    Game_On_Tick_Fn_Type * on_tick;
+    Game_On_Draw_Fn_Type * on_draw;
+    Game_On_Fini_Fn_Type * on_fini;
+};
+
+Gameplay load_gameplay(const char *module_path);
+void unload_gameplay(Gameplay *gameplay);
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -889,20 +904,27 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Watch_Dir_Context watch_context;
     make_watch_dir_context(&watch_context);
 
-    Asset_Reload_Context reload_context;
+    Reload_Context reload_context;
     reload_context.texture_id = atlas_texture;
     reload_context.arena = &asset_arena;
     reload_context.picture = &atlas_picture;
 
     watch_context.target_dir = image_directory_buffer; // TODO(gr3yknigh1): Do free somewhere [2025/03/01]
-    watch_context.watch_exts = WATCH_EXT_BMP;
+    watch_context.watch_exts = WATCH_EXT_BMP | WATCH_EXT_DLL;
     watch_context.parameter = &reload_context;
     watch_context.notification_routine = []( const Str16_View file_name, watch_ext_mask_t ext, File_Action action, void *parameter ) {
-        if (action != File_Action::Modified /* || ext != WATCH_EXT_BMP */ || !str16_view_is_equals(file_name, L"assets\\garden_atlas.bmp")) {
+        if (action != File_Action::Modified) {
             return;
         }
-        Asset_Reload_Context *context = (Asset_Reload_Context *)parameter;
-        context->should_reload.test_and_set();
+        Reload_Context *context = (Reload_Context *)parameter;
+
+        if (ext == WATCH_EXT_BMP && str16_view_is_equals(file_name, L"assets\\garden_atlas.bmp")) {
+            context->should_reload.test_and_set();
+        }
+
+        if (ext == WATCH_EXT_DLL && str16_view_is_equals(file_name, L"build\\Debug\\garden_gameplay.dll")) {
+            context->should_reload_gameplay.test_and_set();
+        }
         return;
     };
 
@@ -949,31 +971,28 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     // Load game code:
     //
 
-    HMODULE gameplay_module = LoadLibraryA(STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME));
-    assert(gameplay_module && gameplay_module != INVALID_HANDLE_VALUE);
-
-    auto *gameplay_on_init = reinterpret_cast<Game_On_Init_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_INIT_FN_NAME));
-    assert(gameplay_on_init);
-
-    auto *gameplay_on_tick = reinterpret_cast<Game_On_Tick_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_TICK_FN_NAME));
-    assert(gameplay_on_tick);
-
-    auto *gameplay_on_draw = reinterpret_cast<Game_On_Draw_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_DRAW_FN_NAME));
-    assert(gameplay_on_draw);
-
-    auto *gameplay_on_fini = reinterpret_cast<Game_On_Fini_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_FINI_FN_NAME));
-    assert(gameplay_on_fini);
+    Gameplay gameplay = load_gameplay(STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME));
 
     Platform_Context platform_context;
     ZERO_STRUCT(&platform_context);
 
-    Game_Context *game_context = reinterpret_cast<Game_Context *>(gameplay_on_init(&platform_context));
+    Game_Context *game_context = reinterpret_cast<Game_Context *>(gameplay.on_init(&platform_context));
 
     while (!global_should_terminate) {
         double dt = clock_tick(&clock);
 
         MSG message;
         ZERO_STRUCT(&message);
+
+        //
+        // Game Hot reload:
+        //
+
+        if (reload_context.should_reload_gameplay.test()) {
+            reload_context.should_reload_gameplay.clear();
+            unload_gameplay(&gameplay);
+            gameplay = load_gameplay(STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME));
+        }
 
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
@@ -1040,13 +1059,14 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         // Update:
         //
 
-        gameplay_on_tick(&platform_context, game_context, dt);
+        gameplay.on_tick(&platform_context, game_context, static_cast<float>(dt));
 
         PERF_BLOCK_BEGIN(UPDATE);
 
             //
-            // Hot reload: Actual reload
+            // Asset Hot reload:
             //
+
             if (reload_context.should_reload.test()) {
                 reload_context.should_reload.clear();
                 glActiveTexture(GL_TEXTURE0);
@@ -1082,7 +1102,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         // Draw:
         //
 
-        gameplay_on_draw(&platform_context, game_context, dt);
+        gameplay.on_draw(&platform_context, game_context, static_cast<float>(dt));
 
         PERF_BLOCK_BEGIN(DRAW);
 
@@ -1110,9 +1130,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         frame_counter++;
     }
 
-    gameplay_on_fini(&platform_context, game_context);
+    gameplay.on_fini(&platform_context, game_context);
 
-    assert(FreeLibrary(gameplay_module));
+    unload_gameplay(&gameplay);
 
     glDeleteProgram(basic_shader_program);
 
@@ -1124,7 +1144,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     CloseWindow(window); // TODO(gr3yknigh1): why it fails? [2025/02/23]
 
     // WaitForSingleObject(watch_thread, INFINITE); // TODO(gr3yknigh1): Wait for thread [2025/02/23]
-
     return 0;
 }
 
@@ -1576,7 +1595,7 @@ arena_alloc(Arena *arena, size_t size, int options)
 }
 
 void *
-ArenaAllocSet(Arena *arena, size_t size, char c, int options)
+arena_alloc_set(Arena *arena, size_t size, char c, int options)
 {
     void *allocated = arena_alloc(arena, size, options);
 
@@ -1591,7 +1610,7 @@ ArenaAllocSet(Arena *arena, size_t size, char c, int options)
 void *
 arena_alloc_zero(Arena *arena, size_t size, int options)
 {
-    return ArenaAllocSet(arena, size, 0, options);
+    return arena_alloc_set(arena, size, 0, options);
 }
 
 bool
@@ -2194,11 +2213,19 @@ watch_dir_thread_worker(PVOID param)
         if (context->notification_routine != nullptr) {
             Str16_View file_name(file_notify_info->FileName, file_notify_info->FileNameLength / sizeof(*file_notify_info->FileName));
 
-            if ( (HAS_FLAG(context->watch_exts, WATCH_EXT_BMP)  && str16_view_endswith(file_name, WATCH_EXT_BMP_VIEW ) )
-              || (HAS_FLAG(context->watch_exts, WATCH_EXT_GLSL) && str16_view_endswith(file_name, WATCH_EXT_GLSL_VIEW) )) {
-                context->notification_routine(file_name, 0, (File_Action)file_notify_info->Action, context->parameter);
+            watch_ext_mask_t file_ext = 0;
+
+            if        (HAS_FLAG(context->watch_exts, WATCH_EXT_BMP)  && str16_view_endswith(file_name, WATCH_EXT_BMP_VIEW)) {
+                file_ext = WATCH_EXT_BMP;
+            } else if (HAS_FLAG(context->watch_exts, WATCH_EXT_GLSL) && str16_view_endswith(file_name, WATCH_EXT_GLSL_VIEW)) {
+                file_ext = WATCH_EXT_GLSL;
+            } else if (HAS_FLAG(context->watch_exts, WATCH_EXT_DLL) && str16_view_endswith(file_name, WATCH_EXT_DLL_VIEW)) {
+                file_ext = WATCH_EXT_DLL;
             }
 
+            if (file_ext != 0) {
+                context->notification_routine(file_name, file_ext, (File_Action)file_notify_info->Action, context->parameter);
+            }
         }
     }
 
@@ -2221,4 +2248,42 @@ gl_die_on_first_error(void)
         DebugBreak(); // XXX
         ExitProcess(1);
     }
+}
+
+
+Gameplay
+load_gameplay(const char *module_path)
+{
+    Gameplay gameplay;
+
+    const char *loaded_gameplay = "garden_gameplay.loaded.dll";
+    if (!CopyFileA(module_path, loaded_gameplay, FALSE)) {
+        DWORD last_error = GetLastError();
+        assert(!last_error);
+    }
+
+    // TODO: add move
+
+    gameplay.module = LoadLibraryA(loaded_gameplay);
+    assert(gameplay.module && gameplay.module != INVALID_HANDLE_VALUE);
+
+    gameplay.on_init = reinterpret_cast<Game_On_Init_Fn_Type *>(GetProcAddress(gameplay.module, GAME_ON_INIT_FN_NAME));
+    assert(gameplay.on_init);
+
+    gameplay.on_tick = reinterpret_cast<Game_On_Tick_Fn_Type *>(GetProcAddress(gameplay.module, GAME_ON_TICK_FN_NAME));
+    assert(gameplay.on_tick);
+
+    gameplay.on_draw = reinterpret_cast<Game_On_Draw_Fn_Type *>(GetProcAddress(gameplay.module, GAME_ON_DRAW_FN_NAME));
+    assert(gameplay.on_draw);
+
+    gameplay.on_fini = reinterpret_cast<Game_On_Fini_Fn_Type *>(GetProcAddress(gameplay.module, GAME_ON_FINI_FN_NAME));
+    assert(gameplay.on_fini);
+
+    return gameplay;
+}
+
+void
+unload_gameplay(Gameplay *gameplay)
+{
+    assert(FreeLibrary(gameplay->module));
 }
