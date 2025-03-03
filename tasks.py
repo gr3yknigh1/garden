@@ -19,13 +19,13 @@
 #    * Done!
 #
 
-from typing import Callable, Optional, Any, Dict, List
+from typing import Callable, Any, TYPE_CHECKING
 
 from os import environ
 from os.path import exists, join, dirname, realpath
 import subprocess
 
-from invoke import task, Collection
+from invoke import task, Collection, Context
 
 F = Callable
 
@@ -42,7 +42,7 @@ output_dir: F[[str], str] = lambda build_type: join(project_dir, "build", build_
 
 DEFAULT_VC_BOOSTRAP_VARS = ["INCLUDE", "LIB", "LIBPATH", "PATH"]
 
-def parse_env_file(file: str) -> Dict[str, Any]:
+def parse_env_file(file: str) -> dict[str, Any]:
     with open(file, mode="r") as f:
         s = f.read()
 
@@ -54,12 +54,12 @@ def parse_env_file(file: str) -> Dict[str, Any]:
         }
     return env
 
-def store_env_to_file(file: str, env: Dict[str, Any]) -> None:
+def store_env_to_file(file: str, env: dict[str, Any]) -> None:
     with open(file, mode="w") as f:
         for k, v in env.items():
             f.write(f"{k}={v}\n")
 
-def find_vc_bootstrap_script() -> Optional[str]:
+def find_vc_bootstrap_script() -> str | None:
     #
     # Detect vcvarsall for x64 build...
     #
@@ -75,11 +75,11 @@ def find_vc_bootstrap_script() -> Optional[str]:
 
     return None
 
-def extract_environment_from_bootstrap_script(arch="x64", bootstrap_script: Optional[str] = None, environment_vars: Optional[List[str]]=None) -> Dict[str, Any]:
+def extract_environment_from_bootstrap_script(arch="x64", bootstrap_script: str | None = None, environment_vars: list[str] | None=None) -> dict[str, Any]:
     if bootstrap_script is None:
         bootstrap_script = find_vc_bootstrap_script()
 
-        if boostrap_script is None:
+        if bootstrap_script is None:
             return {}
 
     if environment_vars is None:
@@ -136,6 +136,7 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
         print("I: GLM already built")
     else:
         print("I: Building GLM...")
+
         c.run(f"cmake -B {glm_configuration} -S {glm_folder} -D GLM_BUILD_TESTS=OFF -D BUILD_SHARED_LIBS=OFF")
         c.run(f"cmake --build {glm_configuration} --config {build_type}")
 
@@ -158,39 +159,129 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
     # TODO(i.akkuzin): Make release configuration build. Currently we using `/Od` flag, which disables any optimizations and link with debug runtime (/MTd). [2025/02/08]
     # TODO(i.akkuzin): Remove _CRT_SECURE_NO_WARNINGS [2025/02/08]
 
-    flags = [
-        "/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"
+    GAMEPLAY_DLL_NAME = "garden_gameplay.dll"
+
+    sources = [
+        join(code_dir, "garden.cpp"),
+        join(project_dir, "glad", "glad.c"),
+        join(project_dir, "glad", "glad_wgl.c"),
     ]
+
+    c.run("echo I: Compiling platform layer...")
+
+    msvc_compile(
+        c, sources,
+        output=join(output_dir(build_type), "garden.exe"),
+        libs=["kernel32.lib", "user32.lib", "gdi32.lib", glm_library(build_type)],
+        defines=dict(
+            _CRT_SECURE_NO_WARNINGS=1,
+            GARDEN_ASSET_DIR=quote_path(assets_dir),
+            GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
+        ),
+        includes=[
+            join(project_dir, "glad"),
+            glm_folder,
+        ],
+        flags=["/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"],
+        env=build_env,
+        only_preprocessor=only_preprocessor, unicode_support=True
+    )
+
+    c.run("echo I: Compiling game code...")
+
+    msvc_compile(
+        c, [ join(code_dir, "gameplay.cpp") ],
+        output=join(output_dir(build_type), GAMEPLAY_DLL_NAME),
+        defines=dict(
+            GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME
+        ),
+        libs=[],
+        flags=["/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"],
+        env=build_env,
+        only_preprocessor=only_preprocessor, unicode_support=True, is_dll=True
+    )
+
+    # link.exe topdown.obj /MACHINE:X64 /SUBSYSTEM:WINDOWS /Fe:topdown.exe
+
+#
+# MSVC command line helpers:
+#
+
+def msvc_format_defines(defines: dict[str, Any]) -> str:
+
+    result = " ".join(
+        [f"/D {k}={v}" for k, v in defines.items() ]
+    )
+
+    return result
+
+def msvc_format_includes(includes: list[str]) -> str:
+
+    result = " ".join(
+        [f"/I {include}" for include in includes]
+    )
+
+    return result
+
+def msvc_compile(
+    c: Context,
+    sources: list[str],
+    *,
+    output: str,
+    libs: list[str] | None=None,
+    defines: dict[str, Any] | None=None,
+    includes: list[str] | None=None,
+    flags: list[str] | None=None,
+    link_flags: list[str] | None=None,
+    env: dict[str, Any] | None=None,
+    only_preprocessor=False,
+    unicode_support=False,
+    is_dll=False,
+    **kw
+):
+    if env is None:
+        env = {}
+
+    if libs is None:
+        libs = []
+
+    if flags is None:
+        flags = []
+
+    if link_flags is None:
+        link_flags = []
+
+    if defines is None:
+        defines = {}
+
+    if includes is None:
+        includes = []
+
+    if unicode_support:
+        defines.update(dict(
+            UNICODE=1,
+            _UNICODE=1,
+        ))
 
     if only_preprocessor:
         flags.append("/P")
 
-    defs = " ".join([
-        "/D_CRT_SECURE_NO_WARNINGS",
-        "/DUNICODE=1",
-        "/D_UNICODE=1",
-        f"/D GARDEN_ASSET_DIR={quote_path(assets_dir)}",
+    if is_dll:
+        link_flags.append("/DLL")
+
+    flags_formatted = " ".join(flags)
+    defines_formatted = msvc_format_defines(defines)
+    includes_formatted = msvc_format_includes(includes)
+    libs_formatted = " ".join(libs)
+    sources_formatted = " ".join(sources)
+    link_flags_formatted = "/link {}".format(" ".join(link_flags))
+    output_formatted = f"/Fe:{output}"
+
+    options = " ".join([
+        flags_formatted, defines_formatted, sources_formatted, output_formatted, includes_formatted, libs_formatted, link_flags_formatted
     ])
 
-    libs = " ".join([
-        "kernel32.lib",
-        "user32.lib",
-        "gdi32.lib",
-        glm_library(build_type),
-    ])
-
-    sources = " ".join([
-        join(code_dir, "garden.cpp"),
-        join(project_dir, "glad", "glad.c"),
-        join(project_dir, "glad", "glad_wgl.c"),
-    ])
-
-    includes = " ".join([
-        "/I {}".format(join(project_dir, "glad")),
-        "/I {}".format(glm_folder),
-    ])
-
-    output = join(output_dir(build_type), "garden.exe")
-
-    c.run(f"cl.exe {' '.join(flags)} {defs} {sources} /Fe:{output} {includes} {libs}", env=build_env)
-    # link.exe topdown.obj /MACHINE:X64 /SUBSYSTEM:WINDOWS /Fe:topdown.exe
+    return c.run(
+        f"cl.exe {options}",
+        env=env, **kw
+    )

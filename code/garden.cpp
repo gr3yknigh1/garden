@@ -25,6 +25,9 @@
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
+#include "gameplay.h"
+#include "platform.h"
+
 #if !defined(STRINGIFY_IMPL)
     #define STRINGIFY_IMPL(X) #X
 #endif
@@ -939,6 +942,30 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     /// XXX
     static Rect_F32 atlas_location = { 0, 0, 16, 16 };
 
+    //
+    // Load game code:
+    //
+
+    HMODULE gameplay_module = LoadLibraryA(STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME));
+    assert(gameplay_module && gameplay_module != INVALID_HANDLE_VALUE);
+
+    auto *gameplay_on_init = reinterpret_cast<Game_On_Init_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_INIT_FN_NAME));
+    assert(gameplay_on_init);
+
+    auto *gameplay_on_tick = reinterpret_cast<Game_On_Tick_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_TICK_FN_NAME));
+    assert(gameplay_on_tick);
+
+    auto *gameplay_on_draw = reinterpret_cast<Game_On_Draw_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_DRAW_FN_NAME));
+    assert(gameplay_on_draw);
+
+    auto *gameplay_on_fini = reinterpret_cast<Game_On_Draw_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_FINI_FN_NAME));
+    assert(gameplay_on_fini);
+
+    Platform_Context platform_context;
+    ZERO_STRUCT(&platform_context);
+
+    Game_Context *game_context = reinterpret_cast<Game_Context *>(gameplay_on_init(&platform_context));
+
     while (!global_should_terminate) {
         double dt = TickClock(&clock);
 
@@ -1010,6 +1037,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         // Update:
         //
 
+        gameplay_on_tick(&platform_context, game_context, dt);
+
         PERF_BLOCK_BEGIN(UPDATE);
 
             //
@@ -1050,6 +1079,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         // Draw:
         //
 
+        gameplay_on_draw(&platform_context, game_context, dt);
+
         PERF_BLOCK_BEGIN(DRAW);
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1075,6 +1106,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
         frame_counter++;
     }
+
+    gameplay_on_fini(&platform_context, game_context);
+
+    assert(FreeLibrary(gameplay_module));
 
     glDeleteProgram(basic_shader_program);
 
