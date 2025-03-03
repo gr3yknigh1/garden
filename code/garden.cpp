@@ -2,7 +2,8 @@
 
 #include <windows.h>
 
-#include "platform.h"
+#include "garden_platform.h"
+#include "garden_gameplay.h"
 
 struct Game_Context {
     int mock;

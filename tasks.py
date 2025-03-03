@@ -167,7 +167,7 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
     common_flags = ["/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"]
 
     msvc_compile(
-        c, [ join(code_dir, "gameplay.cpp") ],
+        c, [ join(code_dir, "garden.cpp") ],
         output=join(output_dir(build_type), GAMEPLAY_DLL_NAME),
         includes=[
             join(project_dir, "glad")
@@ -177,7 +177,6 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
         ),
         libs=[],
         flags=[*common_flags],
-        # link_flags=[f"/PDB:garden_gameplay.{time.time()}.pdb"],
         env=build_env,
         only_preprocessor=only_preprocessor, unicode_support=True, is_dll=True
     )
@@ -201,6 +200,7 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
                 join(project_dir, "glad"),
                 glm_folder,
             ],
+            link_flags=["/INCREMENTAL"],
             flags=[*common_flags],
             env=build_env,
             only_preprocessor=only_preprocessor, unicode_support=True

@@ -25,8 +25,8 @@
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
-#include "gameplay.h"
-#include "platform.h"
+#include "garden_gameplay.h"
+#include "garden_platform.h"
 
 #if !defined(STRINGIFY_IMPL)
     #define STRINGIFY_IMPL(X) #X
@@ -488,11 +488,6 @@ size_t generate_rect(Vertex *rect, float x, float y, float width, float height, 
 // @param[out] rect Output array of vertexes
 //
 size_t generate_rect_with_atlas(Vertex *rect, float x, float y, float width, float height, Rect_F32 atlas_location, Atlas *altas, Color4 color);
-
-struct Input_State {
-    float x_direction;
-    float y_direction;
-};
 
 struct Win32_Key_State {
     short vk_code;

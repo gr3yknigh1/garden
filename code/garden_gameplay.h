@@ -1,6 +1,6 @@
 #if !defined(GARDEN_GAMEPLAY_H)
 //
-// FILE          code\gameplay.h
+// FILE          code\garden_gameplay.h
 //
 // AUTHORS
 //               Ilya Akkuzin <gr3yknigh1@gmail.com>
@@ -9,7 +9,7 @@
 //
 #define GARDEN_GAMEPLAY_H
 
-#include "platform.h"
+#include "garden_platform.h"
 
 struct Game_Context;
 

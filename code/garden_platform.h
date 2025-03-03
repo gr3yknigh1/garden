@@ -9,8 +9,13 @@
 //
 #define GARDEN_PLATFORM_H
 
+struct Input_State {
+    float x_direction;
+    float y_direction;
+};
+
 struct Platform_Context {
-    Input_Context input_context;
+    Input_State input_state;
 };
 
 #endif // GARDEN_PLATFORM_H
