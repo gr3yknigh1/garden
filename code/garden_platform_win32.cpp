@@ -1,5 +1,5 @@
 //
-// FILE          code\garden.cpp
+// FILE          code\garden_platform_win32.cpp
 //
 // AUTHORS
 //               Ilya Akkuzin <gr3yknigh1@gmail.com>

@@ -10,7 +10,7 @@
 #define GARDEN_PLATFORM_H
 
 struct Platform_Context {
-    int mock;
+    Input_Context input_context;
 };
 
 #endif // GARDEN_PLATFORM_H

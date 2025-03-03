@@ -162,12 +162,6 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
 
     GAMEPLAY_DLL_NAME = "garden_gameplay.dll"
 
-    sources = [
-        join(code_dir, "garden.cpp"),
-        join(project_dir, "glad", "glad.c"),
-        join(project_dir, "glad", "glad_wgl.c"),
-    ]
-
     c.run("echo I: Compiling game code...")
 
     common_flags = ["/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"]
@@ -189,12 +183,13 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
     )
 
     garden_output_exe = join(output_dir(build_type), "garden.exe")
+    garden_platform_sources = [ join(code_dir, "garden_platform.cpp"), join(project_dir, "glad", "glad.c"), join(project_dir, "glad", "glad_wgl.c") ]
 
     if not is_file_busy(garden_output_exe):
         c.run("echo I: Compiling platform runtime...")
 
         msvc_compile(
-            c, sources,
+            c, garden_platform_sources,
             output=garden_output_exe,
             libs=["kernel32.lib", "user32.lib", "gdi32.lib", glm_library(build_type)],
             defines=dict(
