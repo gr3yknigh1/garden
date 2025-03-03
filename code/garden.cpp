@@ -87,19 +87,19 @@ struct Vertex {
 static_assert(sizeof(Vertex) == (sizeof(float) * 4 + sizeof(packed_rgba_t)));
 
 #pragma pack(push, 1)
-struct ColorRGBA_U8 {
+struct Color_RGBA_U8 {
     uint8_t r, g, b, a;
 };
 #pragma pack(pop)
 
-typedef ColorRGBA_U8 Color4;
+typedef Color_RGBA_U8 Color4;
 
 //
 // String handling:
 //
 
 constexpr size_t
-GetStrLength(const char *s) noexcept
+str8_get_length(const char *s) noexcept
 {
     size_t result = 0;
 
@@ -110,19 +110,19 @@ GetStrLength(const char *s) noexcept
     return result;
 }
 
-struct StrView8 {
+struct Str8_View8 {
     const char *data;
     size_t length;
 
-    constexpr StrView8() noexcept : data(nullptr), length(0) {}
-    constexpr StrView8(const char *data_) noexcept : data(data_), length(GetStrLength(data_)) {}
-    constexpr StrView8(const char *data_, size_t length_) noexcept : data(data_), length(length_) {}
+    constexpr Str8_View8() noexcept : data(nullptr), length(0) {}
+    constexpr Str8_View8(const char *data_) noexcept : data(data_), length(str8_get_length(data_)) {}
+    constexpr Str8_View8(const char *data_, size_t length_) noexcept : data(data_), length(length_) {}
 };
 
-inline StrView8
-StrView8_CaptureUntil(const char **cursor, char until) noexcept
+inline Str8_View8
+str8_view_capture_until(const char **cursor, char until)
 {
-    StrView8 sv;
+    Str8_View8 sv;
 
     sv.data = *cursor;
 
@@ -136,7 +136,7 @@ StrView8_CaptureUntil(const char **cursor, char until) noexcept
 }
 
 inline bool
-StrView8_CopyToNullTerminated(StrView8 sv, char *out_buffer, size_t out_buffer_size) noexcept
+str8_view_copy_to_nullterminated(Str8_View8 sv, char *out_buffer, size_t out_buffer_size)
 {
     if (sv.length + 1 > out_buffer_size) {
         return false;
@@ -148,7 +148,7 @@ StrView8_CopyToNullTerminated(StrView8 sv, char *out_buffer, size_t out_buffer_s
 }
 
 constexpr bool
-StrView8_IsEquals(StrView8 a, StrView8 b) noexcept
+str8_view_is_equals(Str8_View8 a, Str8_View8 b)
 {
     if (a.length != b.length) {
         return false;
@@ -165,14 +165,14 @@ StrView8_IsEquals(StrView8 a, StrView8 b) noexcept
 }
 
 constexpr bool
-StrView8_IsEquals(StrView8 a, const char *str) noexcept
+str8_view_is_equals(Str8_View8 a, const char *str)
 {
-    StrView8 b(str);
-    return StrView8_IsEquals(a, b);
+    Str8_View8 b(str);
+    return str8_view_is_equals(a, b);
 }
 
 constexpr size_t
-GetStrLength(const wchar_t *s) noexcept
+str8_get_length(const wchar_t *s) noexcept
 {
     size_t result = 0;
 
@@ -183,18 +183,18 @@ GetStrLength(const wchar_t *s) noexcept
     return result;
 }
 
-struct StrView16 {
+struct Str16_View {
     const wchar_t *data;
     size_t length;
 
-    constexpr StrView16() noexcept : data(nullptr), length(0) {}
-    constexpr StrView16(const wchar_t *data_) noexcept : data(data_), length(GetStrLength(data_)) {}
-    constexpr StrView16(const wchar_t *data_, size_t length_) noexcept : data(data_), length(length_) {}
+    constexpr Str16_View() noexcept : data(nullptr), length(0) {}
+    constexpr Str16_View(const wchar_t *data_) noexcept : data(data_), length(str8_get_length(data_)) {}
+    constexpr Str16_View(const wchar_t *data_, size_t length_) noexcept : data(data_), length(length_) {}
 };
 
 
 inline bool
-StrView16_CopyToNullTerminated(StrView16 view, wchar_t *out_buffer, size_t out_buffer_size) noexcept
+str16_view_copy_to_nullterminated(Str16_View view, wchar_t *out_buffer, size_t out_buffer_size) noexcept
 {
     size_t required_buffer_size = (view.length + 1) * sizeof(*view.data);
 
@@ -208,7 +208,7 @@ StrView16_CopyToNullTerminated(StrView16 view, wchar_t *out_buffer, size_t out_b
 }
 
 inline bool
-StrView16_EndsWith(StrView16 view, StrView16 end) noexcept
+str16_view_endswith(Str16_View view, Str16_View end) noexcept
 {
     if (view.length < end.length) {
         return false;
@@ -225,7 +225,7 @@ StrView16_EndsWith(StrView16 view, StrView16 end) noexcept
 
 
 constexpr bool
-StrView16_IsEquals(StrView16 a, StrView16 b) noexcept
+str16_view_is_equals(Str16_View a, Str16_View b) noexcept
 {
     if (a.length != b.length) {
         return false;
@@ -243,27 +243,27 @@ StrView16_IsEquals(StrView16 a, StrView16 b) noexcept
 
 
 constexpr bool
-StrView16_IsEquals(StrView16 a, const wchar_t *str) noexcept
+str16_view_is_equals(Str16_View a, const wchar_t *str) noexcept
 {
-    StrView16 b(str);
-    return StrView16_IsEquals(a, b);
+    Str16_View b(str);
+    return str16_view_is_equals(a, b);
 }
 
 
-wchar_t GetPathSeparator();
+wchar_t path16_get_separator();
 
-bool GetPathParent(const wchar_t *path, size_t path_length, StrView16 *out);
+bool path16_get_parent(const wchar_t *path, size_t path_length, Str16_View *out);
 
 //
 // Perf helpers:
 //
 
-int64_t GetPerfFrequency(void);
-int64_t GetPerfCounter(void);
-uint64_t GetCyclesCount(void);
+int64_t perf_get_counter_frequency(void);
+int64_t perf_get_counter(void);
+uint64_t perf_get_cycles_count(void);
 
 #pragma pack(push, 1)
-typedef struct Perf_BlockRecord {
+struct Perf_Block_Record {
     const char *label;
     const char *function;
     const char *file_path;
@@ -272,29 +272,29 @@ typedef struct Perf_BlockRecord {
     uint64_t cycles_end;
     int64_t counter_begin;
     int64_t counter_end;
-} Ignite_Perf_BlockRecord;
+};
 #pragma pack(pop)
 
-void Perf_BlockRecord_Print(const Perf_BlockRecord *record);
+void perf_block_record_print(const Perf_Block_Record *record);
 
 #define PERF_BLOCK_RECORD(NAME) NAME##__BLOCK_RECORD
 
 #define PERF_BLOCK_BEGIN(NAME) \
-    Perf_BlockRecord PERF_BLOCK_RECORD(NAME); \
+    Perf_Block_Record PERF_BLOCK_RECORD(NAME); \
     do { \
         PERF_BLOCK_RECORD(NAME).label = STRINGIFY(NAME); \
         PERF_BLOCK_RECORD(NAME).function = __FUNCTION__; \
         PERF_BLOCK_RECORD(NAME).file_path = __FILE__; \
         PERF_BLOCK_RECORD(NAME).line_number = __LINE__; \
-        PERF_BLOCK_RECORD(NAME).cycles_begin = GetCyclesCount(); \
-        PERF_BLOCK_RECORD(NAME).counter_begin = GetPerfCounter(); \
+        PERF_BLOCK_RECORD(NAME).cycles_begin = perf_get_cycles_count(); \
+        PERF_BLOCK_RECORD(NAME).counter_begin = perf_get_counter(); \
     } while (0)
 
 #define PERF_BLOCK_END(NAME) \
     do { \
-        PERF_BLOCK_RECORD(NAME).cycles_end = GetCyclesCount(); \
-        PERF_BLOCK_RECORD(NAME).counter_end = GetPerfCounter(); \
-        Perf_BlockRecord_Print(&PERF_BLOCK_RECORD(NAME)); \
+        PERF_BLOCK_RECORD(NAME).cycles_end = perf_get_cycles_count(); \
+        PERF_BLOCK_RECORD(NAME).counter_end = perf_get_counter(); \
+        perf_block_record_print(&PERF_BLOCK_RECORD(NAME)); \
     } while (0)
 
 
@@ -308,18 +308,17 @@ struct Arena {
     size_t occupied;
 };
 
-Arena MakeArena(size_t capacity);
+Arena make_arena(size_t capacity);
+bool  free_arena(Arena *arena);
 
 #define ARENA_ALLOC_BASIC   MAKE_FLAG(0)
 #define ARENA_ALLOC_POPABLE MAKE_FLAG(1)
 
-void *ArenaAlloc(Arena *arena, size_t size, int options);
-void *ArenaAllocSet(Arena *arena, size_t size, char c, int options);
-void *ArenaAllocZero(Arena *arena, size_t size, int options);
-bool ArenaPop(Arena *arena, void *data);
+void * arena_alloc(Arena *arena, size_t size, int options);
+void * arena_alloc_zero(Arena *arena, size_t size, int options);
+bool   arena_pop(Arena *arena, void *data);
+size_t arena_reset(Arena *arena);
 
-size_t ResetArena(Arena *arena);
-bool FreeArena(Arena *arena);
 
 //
 // WGL: Context initialization.
@@ -364,6 +363,8 @@ static WGL_GetProcAddress_T *WGL_GetProcAddress;
 // WGL: OpenGL extentions initialization.
 //
 
+// TODO(gr3yknigh1): Replace _T with _FnType [2025/03/03]
+
 typedef HGLRC    WINAPI WGL_CreateContextAttribARB_T(HDC, HGLRC, const int *);
 typedef bool32_t WINAPI WGL_ChoosePixelFormatARB_T(HDC, const int *, const float *, unsigned int, int *, unsigned int *);
 typedef bool32_t WINAPI WGL_SwapIntervalEXT_T(int);
@@ -378,9 +379,9 @@ static WGL_SwapIntervalEXT_T        *WGL_SwapIntervalEXT;
 
 static bool global_should_terminate = false;
 
-static void      Win32_InitOpenGLContextExtensions(void);
-static HGLRC     Win32_InitOpenGLContext(HDC device_context);
-LRESULT CALLBACK Win32_WindowEventHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
+static void      win32_init_opengl_context_extensions(void);
+static HGLRC     win32_init_opengl_context(HDC device_context);
+LRESULT CALLBACK win32_window_message_handler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 
 //
 // Camera
@@ -409,28 +410,28 @@ struct Camera {
     Camera_ViewMode view_mode;
 };
 
-Camera MakeCamera(Camera_ViewMode view_mode);
+Camera make_camera(Camera_ViewMode view_mode);
 
-void RotateCamera(Camera *camera, float x_offset, float y_offset);
-glm::mat4 GetCameraViewMatrix(Camera *camera);
-glm::mat4 GetCameraProjectionMatrix(Camera *camera, int viewport_width, int viewport_height);
+void      camera_rotate(Camera *camera, float x_offset, float y_offset);
+glm::mat4 camera_get_view_matrix(Camera *camera);
+glm::mat4 camera_get_projection_matrix(Camera *camera, int viewport_width, int viewport_height);
 
 //
 // OpenGL API wrappers
 //
-GLuint CompileShaderFromString(Arena *arena, const char *string, GLenum type);
-GLuint CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type);
-GLuint LinkShaderProgram(Arena *arena, GLuint vertex_shader, GLuint fragment_shader);
+GLuint compile_shader_from_str8(Arena *arena, const char *string, GLenum type);
+GLuint compile_shader_from_file(Arena *arena, const char *file_path, GLenum type);
+GLuint link_shader_program(Arena *arena, GLuint vertex_shader, GLuint fragment_shader);
 
-struct VertexBufferAttribute {
+struct Vertex_Buffer_Attribute {
     bool is_normalized;
     unsigned int type;
     unsigned int count;
     size32_t size;
 };
 
-struct VertexBufferLayout {
-    VertexBufferAttribute *attributes;
+struct Vertex_Buffer_Layout {
+    Vertex_Buffer_Attribute *attributes;
     unsigned int attributes_count;
     unsigned int attributes_capacity;
     size32_t stride;
@@ -447,10 +448,11 @@ struct VertexBufferLayout {
 //
 // @return True if allocation of the array was succesfull. Otherwise buy more RAM.
 //
-bool MakeVertexBufferLayout(Arena *arena, VertexBufferLayout *layout, size32_t attributes_capacity);
-VertexBufferAttribute *VertexBufferLayout_Push(VertexBufferLayout *layout, unsigned int count, GLenum type, size_t size);
-VertexBufferAttribute *VertexBufferLayout_PushFloat(VertexBufferLayout *layout, unsigned int count);
-VertexBufferAttribute *VertexBufferLayout_PushInt(VertexBufferLayout *layout, unsigned int count);
+bool make_vertex_buffer_layout(Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity);
+
+Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, size_t size);
+Vertex_Buffer_Attribute *vertex_buffer_layout_push_float  (Vertex_Buffer_Layout *layout, unsigned int count);
+Vertex_Buffer_Attribute *vertex_buffer_layout_push_integer(Vertex_Buffer_Layout *layout, unsigned int count);
 
 //
 // @brief Initializes vertex buffer layout.
@@ -459,7 +461,7 @@ VertexBufferAttribute *VertexBufferLayout_PushInt(VertexBufferLayout *layout, un
 //     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer)
 //     glBindVertexArray(vertex_array);
 //
-void VertexBufferLayout_BuildAttributes(const VertexBufferLayout *layout);
+void vertex_buffer_layout_build_attrs(const Vertex_Buffer_Layout *layout);
 
 
 struct Rect_F32 {
@@ -480,19 +482,19 @@ struct Atlas {
 //
 // @param[out] rect Output array of vertexes
 //
-size_t GenerateRect(Vertex *rect, float x, float y, float width, float height, Color4 color);
+size_t generate_rect(Vertex *rect, float x, float y, float width, float height, Color4 color);
 
 //
 // @param[out] rect Output array of vertexes
 //
-size_t GenerateRectAtlas(Vertex *rect, float x, float y, float width, float height, Rect_F32 atlas_location, Atlas *altas, Color4 color);
+size_t generate_rect_with_atlas(Vertex *rect, float x, float y, float width, float height, Rect_F32 atlas_location, Atlas *altas, Color4 color);
 
-struct InputState {
+struct Input_State {
     float x_direction;
     float y_direction;
 };
 
-struct Win32_KeyState {
+struct Win32_Key_State {
     short vk_code;
     short flags;
     short scan_code;
@@ -509,18 +511,18 @@ struct Win32_KeyState {
     #define WIN32_KEYSTATE_IS_RELEASED(K_PTR) HAS_FLAG((K_PTR)->flags, KF_UP)
 #endif
 
-Win32_KeyState Win32_ConvertMSGToKeyState(MSG message);
+Win32_Key_State win32_convert_msg_to_key_state(MSG message);
 
-bool Win32_IsVkPressed(int vk);
+bool win32_is_vk_pressed(int vk);
 
 //
 // Handle keyboard input for Win32 API layer.
 //
 // @param[in] message Actual windows message which received in mainloop.
 //
-// @param[out] input_state Output InputState of the game.
+// @param[out] input_state Output Input_State of the game.
 //
-void Win32_HandleKeyboardInput(MSG message, InputState *input_state);
+void Win32_HandleKeyboardInput(MSG message, Input_State *input_state);  // TODO
 
 //
 // Time:
@@ -532,21 +534,22 @@ struct Clock {
     int64_t frequency;
 };
 
-Clock MakeClock(void);
-double TickClock(Clock *clock);
+Clock make_clock(void);
+
+double clock_tick(Clock *clock);
 
 //
 // Linear:
 //
 
-float Absolute(float x);
-void NormalizeVector2F(float *x, float *y);
+float absolute(float x);
+void normalize_vector2f(float *x, float *y);
 
 //
 // Media:
 //
 
-enum struct BitmapPictureHeaderType : uint32_t {
+enum struct Bitmap_Picture_Header_Type : uint32_t {
     BitmapCoreHeader = 12,
     Os22XBitmapHeader_S = 16,
     BitmapInfoHeader = 40,
@@ -557,7 +560,7 @@ enum struct BitmapPictureHeaderType : uint32_t {
     BitmapV5Header = 124,
 };
 
-enum struct BitmapPictureCompressionMethod : uint32_t {
+enum struct Bitmap_Picture_Compression_Method : uint32_t {
     RGB = 0,
     RLE8 = 1,
     RLE4 = 2,
@@ -571,13 +574,13 @@ enum struct BitmapPictureCompressionMethod : uint32_t {
 };
 
 #pragma pack(push, 1)
-struct BitmapPictureDIBHeader {
-    BitmapPictureHeaderType header_size;
+struct Bitmap_Picture_DIB_Header {
+    Bitmap_Picture_Header_Type header_size;
     uint32_t width;
     uint32_t height;
     uint16_t planes_count;
     uint16_t depth;
-    BitmapPictureCompressionMethod compression_method;
+    Bitmap_Picture_Compression_Method compression_method;
     uint32_t image_size;
     uint32_t x_pixel_per_meter;
     uint32_t y_pixel_per_meter;
@@ -587,7 +590,7 @@ struct BitmapPictureDIBHeader {
 #pragma pack(pop)
 
 #pragma pack(push, 1)
-struct BitmapPictureHeader {
+struct Bitmap_Picture_Header {
     uint16_t type;
     uint32_t file_size;
     uint16_t reserved[2];
@@ -596,40 +599,40 @@ struct BitmapPictureHeader {
 #pragma pack(pop)
 
 #pragma pack(push, 1)
-struct ColorBGRA_U8 {
+struct Color_BGRA_U8 {
     uint8_t b, g, r, a;
 };
 #pragma pack(pop)
 
 #pragma pack(push, 1)
-struct BitmapPicture {
-    BitmapPictureHeader header;
-    BitmapPictureDIBHeader dib_header;
+struct Bitmap_Picture {
+    Bitmap_Picture_Header header;
+    Bitmap_Picture_DIB_Header dib_header;
 
     union {
         void *data;
-        ColorBGRA_U8 *bgra;
+        Color_BGRA_U8 *bgra;
     } u;
 };
 #pragma pack(pop)
 
-bool LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char *file_path);
+bool load_bitmap_picture_from_file(Arena *arena, Bitmap_Picture *picture, const char *file_path);
 
 //
 // @pre
 //   - Bind target texture with glBindTexture(GL_TEXTURE_2D, ...);
 //
-void Gl_TextureImage2D_FromBitmapPicture(void *data, size32_t width, size32_t height, BitmapPictureCompressionMethod compression_method, GLenum internal_format);
+void gl_make_texture_from_bitmap_picture(void *data, size32_t width, size32_t height, Bitmap_Picture_Compression_Method compression_method, GLenum internal_format);
 
 
-void Gl_ClearErrors();
-void Gl_DieOnError(void);
+void gl_clear_all_errors();
+void gl_die_on_first_error(void);
 
 //
 // Tilemaps:
 //
 
-enum struct TilemapImageFormat {
+enum struct Tilemap_Image_Format {
     Bitmap,
 };
 
@@ -646,24 +649,24 @@ struct Tilemap {
     size_t indexes_count;
 
     struct {
-        TilemapImageFormat format;
+        Tilemap_Image_Format format;
         union {
-            BitmapPicture *bitmap;
+            Bitmap_Picture *bitmap;
         } u;
     } image;
 };
 
-Tilemap *LoadTilemapFromFile(Arena *arena, const char *file_path);
+Tilemap *load_tilemap_from_file(Arena *arena, const char *file_path);
 
 #define WATCH_EXT_NONE MAKE_FLAG(0)
 #define WATCH_EXT_BMP  MAKE_FLAG(1)
 #define WATCH_EXT_GLSL MAKE_FLAG(2)
 
-constexpr StrView16 WATCH_EXT_BMP_VIEW = L"bmp";
-constexpr StrView16 WATCH_EXT_GLSL_VIEW = L"glsl";
+constexpr Str16_View WATCH_EXT_BMP_VIEW = L"bmp";
+constexpr Str16_View WATCH_EXT_GLSL_VIEW = L"glsl";
 
 /* https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-file_notify_information#members */
-enum struct FileAction {
+enum struct File_Action {
     Added           = FILE_ACTION_ADDED,
     Removed         = FILE_ACTION_REMOVED,
     Modified        = FILE_ACTION_MODIFIED,
@@ -672,9 +675,9 @@ enum struct FileAction {
 };
 
 typedef int watch_ext_mask_t;
-typedef void (* watch_notification_routine_t)(const StrView16 file_name, watch_ext_mask_t ext, FileAction action, void *parameter);
+typedef void (* watch_notification_routine_t)(const Str16_View file_name, watch_ext_mask_t ext, File_Action action, void *parameter);
 
-struct WatchDirContext {
+struct Watch_Dir_Context {
     std::atomic_flag should_stop;
     const wchar_t *target_dir;
     watch_ext_mask_t watch_exts;
@@ -682,17 +685,17 @@ struct WatchDirContext {
     void *parameter;
 };
 
-void MakeWatchDirContext(WatchDirContext *context);
+void make_watch_dir_context(Watch_Dir_Context *context);
 
-void WatchDirWorker(PVOID param);
+void watch_dir_thread_worker(PVOID param);
 
 //
 // Assets:
 //
 
-struct AssetReloadContext {
+struct Asset_Reload_Context {
     Arena *arena;
-    BitmapPicture *picture; //  TODO(gr3yknigh1): Make it generic-asset [2025/03/01]
+    Bitmap_Picture *picture; //  TODO(gr3yknigh1): Make it generic-asset [2025/03/01]
     GLuint texture_id;
     std::atomic_flag should_reload;
 };
@@ -714,7 +717,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     window_class.style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC;
     //                                             ^^^^^^^^
     // NOTE(ilya.a): Needed by OpenGL. See Khronos's docs [2024/11/10]
-    window_class.lpfnWndProc = Win32_WindowEventHandler;
+    window_class.lpfnWndProc = win32_window_message_handler;
     window_class.hInstance = instance;
     window_class.lpszClassName = window_class_name;
     assert(RegisterClassW(&window_class));
@@ -755,7 +758,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     // dumpbin /exports C:\Windows\System32\opengl32.dll | findstr wgl*
     // ```
     // [2024/11/11]
-    HGLRC window_render_context = Win32_InitOpenGLContext(window_device_context);
+    HGLRC window_render_context = win32_init_opengl_context(window_device_context);
     assert(window_render_context);
 
     assert(gladLoadGL());
@@ -781,13 +784,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
-    Arena shader_compilation_arena = MakeArena(1024 * 10);
+    Arena shader_compilation_arena = make_arena(1024 * 10);
 
-    GLuint basic_vert_shader = CompileShaderFromFile(&shader_compilation_arena, STRINGIFY(GARDEN_ASSET_DIR) "\\basic.vert.glsl", GL_VERTEX_SHADER);
-    GLuint basic_frag_shader = CompileShaderFromFile(&shader_compilation_arena, STRINGIFY(GARDEN_ASSET_DIR) "\\basic.frag.glsl", GL_FRAGMENT_SHADER);
-    GLuint basic_shader_program = LinkShaderProgram(&shader_compilation_arena, basic_vert_shader, basic_frag_shader);
+    GLuint basic_vert_shader = compile_shader_from_file(&shader_compilation_arena, STRINGIFY(GARDEN_ASSET_DIR) "\\basic.vert.glsl", GL_VERTEX_SHADER);
+    GLuint basic_frag_shader = compile_shader_from_file(&shader_compilation_arena, STRINGIFY(GARDEN_ASSET_DIR) "\\basic.frag.glsl", GL_FRAGMENT_SHADER);
+    GLuint basic_shader_program = link_shader_program(&shader_compilation_arena, basic_vert_shader, basic_frag_shader);
 
-    FreeArena(&shader_compilation_arena);
+    free_arena(&shader_compilation_arena);
 
     /* After linking shaders no longer needed. */
     glDeleteShader(basic_vert_shader);
@@ -801,10 +804,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     GLint projection_uniform_loc = glGetUniformLocation(basic_shader_program, "projection");
     assert(projection_uniform_loc != -1);
 
-    Camera camera = MakeCamera(Camera_ViewMode::Orthogonal);
+    Camera camera = make_camera(Camera_ViewMode::Orthogonal);
 
     glm::mat4 model = glm::identity<glm::mat4>();
-    glm::mat4 projection = GetCameraProjectionMatrix(&camera, window_width, window_height);
+    glm::mat4 projection = camera_get_projection_matrix(&camera, window_width, window_height);
 
     glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
@@ -817,26 +820,26 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glGenBuffers(1, &vertex_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
 
-    Arena page_arena = MakeArena(1024);
+    Arena page_arena = make_arena(1024);
 
-    VertexBufferLayout vertex_buffer_layout;
-    assert(MakeVertexBufferLayout(&page_arena, &vertex_buffer_layout, 4));
+    Vertex_Buffer_Layout vertex_buffer_layout;
+    assert(make_vertex_buffer_layout(&page_arena, &vertex_buffer_layout, 4));
 
-    assert(VertexBufferLayout_PushFloat(&vertex_buffer_layout, 2));
-    assert(VertexBufferLayout_PushFloat(&vertex_buffer_layout, 2));
-    assert(VertexBufferLayout_PushInt(&vertex_buffer_layout, 1));
+    assert(vertex_buffer_layout_push_float(&vertex_buffer_layout, 2));
+    assert(vertex_buffer_layout_push_float(&vertex_buffer_layout, 2));
+    assert(vertex_buffer_layout_push_integer(&vertex_buffer_layout, 1));
 
-    VertexBufferLayout_BuildAttributes(&vertex_buffer_layout);
+    vertex_buffer_layout_build_attrs(&vertex_buffer_layout);
 
-    ResetArena(&page_arena);
+    arena_reset(&page_arena);
 
     //
     // Media:
     //
 
-    Arena asset_arena = MakeArena(1024000);
-    BitmapPicture atlas_picture;
-    assert(LoadBitmapPictureFromFile(&asset_arena, &atlas_picture, STRINGIFY(GARDEN_ASSET_DIR) "\\garden_atlas.bmp"));
+    Arena asset_arena = make_arena(1024000);
+    Bitmap_Picture atlas_picture;
+    assert(load_bitmap_picture_from_file(&asset_arena, &atlas_picture, STRINGIFY(GARDEN_ASSET_DIR) "\\garden_atlas.bmp"));
 
     //
     // Setup entity atlas:
@@ -848,11 +851,11 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glGenTextures(1, &atlas_texture);
     glBindTexture(GL_TEXTURE_2D, atlas_texture);
 
-    Gl_TextureImage2D_FromBitmapPicture(
+    gl_make_texture_from_bitmap_picture(
         atlas_picture.u.data, atlas_picture.dib_header.width, atlas_picture.dib_header.height,
         atlas_picture.dib_header.compression_method, GL_RGBA8);
 
-    ResetArena(&asset_arena);
+    arena_reset(&asset_arena);
 
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
@@ -874,19 +877,19 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     DWORD last_error = GetLastError();
     assert(last_error == ERROR_SUCCESS);
 
-    StrView16 image_directory_view;
-    assert(GetPathParent(image_path_buffer, bytes_written, &image_directory_view));
+    Str16_View image_directory_view;
+    assert(path16_get_parent(image_path_buffer, bytes_written, &image_directory_view));
 
     wchar_t *image_directory_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, (image_directory_view.length + 1) * sizeof(*image_directory_view.data));
     assert(image_directory_buffer);
 
-    assert(StrView16_CopyToNullTerminated(image_directory_view, image_directory_buffer, (image_directory_view.length + 1) * sizeof(*image_directory_view.data)));
+    assert(str16_view_copy_to_nullterminated(image_directory_view, image_directory_buffer, (image_directory_view.length + 1) * sizeof(*image_directory_view.data)));
     assert(HeapFree(GetProcessHeap(), 0, image_path_buffer));
 
-    WatchDirContext watch_context;
-    MakeWatchDirContext(&watch_context);
+    Watch_Dir_Context watch_context;
+    make_watch_dir_context(&watch_context);
 
-    AssetReloadContext reload_context;
+    Asset_Reload_Context reload_context;
     reload_context.texture_id = atlas_texture;
     reload_context.arena = &asset_arena;
     reload_context.picture = &atlas_picture;
@@ -894,17 +897,17 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     watch_context.target_dir = image_directory_buffer; // TODO(gr3yknigh1): Do free somewhere [2025/03/01]
     watch_context.watch_exts = WATCH_EXT_BMP;
     watch_context.parameter = &reload_context;
-    watch_context.notification_routine = []( const StrView16 file_name, watch_ext_mask_t ext, FileAction action, void *parameter ) {
-        if (action != FileAction::Modified /* || ext != WATCH_EXT_BMP */ || !StrView16_IsEquals(file_name, L"assets\\garden_atlas.bmp")) {
+    watch_context.notification_routine = []( const Str16_View file_name, watch_ext_mask_t ext, File_Action action, void *parameter ) {
+        if (action != File_Action::Modified /* || ext != WATCH_EXT_BMP */ || !str16_view_is_equals(file_name, L"assets\\garden_atlas.bmp")) {
             return;
         }
-        AssetReloadContext *context = (AssetReloadContext *)parameter;
+        Asset_Reload_Context *context = (Asset_Reload_Context *)parameter;
         context->should_reload.test_and_set();
         return;
     };
 
     DWORD watch_thread_id = 0;
-    HANDLE watch_thread = CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)WatchDirWorker, &watch_context, 0, &watch_thread_id);
+    HANDLE watch_thread = CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)watch_dir_thread_worker, &watch_context, 0, &watch_thread_id);
     assert(watch_thread && watch_thread != INVALID_HANDLE_VALUE);
     // assert(HeapFree(GetProcessHeap(), 0, image_directory_buffer));
 
@@ -913,7 +916,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
 
     // TODO(gr3yknigh1): Do it later [2025/02/25]
-    Tilemap *tilemap = LoadTilemapFromFile(&asset_arena, "demo.scene.td");
+    Tilemap *tilemap = load_tilemap_from_file(&asset_arena, "demo.scene.td");
     glActiveTexture(GL_TEXTURE1);
 
     GLuint tilemap_texture;
@@ -928,13 +931,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Game mainloop:
     //
-    Arena geometry_arena = MakeArena(sizeof(Vertex) * 1024);
+    Arena geometry_arena = make_arena(sizeof(Vertex) * 1024);
 
     float player_x = 0, player_y = 0, player_speed = 300.0f;
 
-    Clock clock = MakeClock();
+    Clock clock = make_clock();
 
-    InputState input_state;
+    Input_State input_state;
     ZERO_STRUCT(&input_state);
 
     uint64_t frame_counter = 0;
@@ -958,7 +961,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     auto *gameplay_on_draw = reinterpret_cast<Game_On_Draw_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_DRAW_FN_NAME));
     assert(gameplay_on_draw);
 
-    auto *gameplay_on_fini = reinterpret_cast<Game_On_Draw_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_FINI_FN_NAME));
+    auto *gameplay_on_fini = reinterpret_cast<Game_On_Fini_Fn_Type *>(GetProcAddress(gameplay_module, GAME_ON_FINI_FN_NAME));
     assert(gameplay_on_fini);
 
     Platform_Context platform_context;
@@ -967,7 +970,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Game_Context *game_context = reinterpret_cast<Game_Context *>(gameplay_on_init(&platform_context));
 
     while (!global_should_terminate) {
-        double dt = TickClock(&clock);
+        double dt = clock_tick(&clock);
 
         MSG message;
         ZERO_STRUCT(&message);
@@ -981,7 +984,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 case WM_KEYDOWN:
                 case WM_SYSKEYUP:
                 case WM_SYSKEYDOWN: {
-                    Win32_KeyState key = Win32_ConvertMSGToKeyState(message);
+                    Win32_Key_State key = win32_convert_msg_to_key_state(message);
 
                     if (key.vk_code == VK_ESCAPE || key.vk_code == 0x51) {  // 0x51 - `Q` key.
                         global_should_terminate = true;
@@ -1008,13 +1011,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                             input_state.y_direction = +1;
                         }
                     } else {
-                        if ((key.vk_code == VK_LEFT   && !Win32_IsVkPressed(VK_RIGHT))
-                        || ((key.vk_code == VK_RIGHT) && !Win32_IsVkPressed(VK_LEFT))) {
+                        if ((key.vk_code == VK_LEFT   && !win32_is_vk_pressed(VK_RIGHT))
+                        || ((key.vk_code == VK_RIGHT) && !win32_is_vk_pressed(VK_LEFT))) {
                             input_state.x_direction = 0;
                         }
 
-                        if ((key.vk_code == VK_DOWN && !Win32_IsVkPressed(VK_UP))
-                         || (key.vk_code == VK_UP && !Win32_IsVkPressed(VK_DOWN))) {
+                        if ((key.vk_code == VK_DOWN && !win32_is_vk_pressed(VK_UP))
+                         || (key.vk_code == VK_UP && !win32_is_vk_pressed(VK_DOWN))) {
                             input_state.y_direction = 0;
                         }
                     }
@@ -1049,13 +1052,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, reload_context.texture_id);
 
-                assert(LoadBitmapPictureFromFile(reload_context.arena, reload_context.picture, STRINGIFY(GARDEN_ASSET_DIR) "\\garden_atlas.bmp"));
+                assert(load_bitmap_picture_from_file(reload_context.arena, reload_context.picture, STRINGIFY(GARDEN_ASSET_DIR) "\\garden_atlas.bmp"));
 
-                Gl_TextureImage2D_FromBitmapPicture(
+                gl_make_texture_from_bitmap_picture(
                     reload_context.picture->u.data, reload_context.picture->dib_header.width, reload_context.picture->dib_header.height,
                     reload_context.picture->dib_header.compression_method, GL_RGBA8);
 
-                ResetArena(reload_context.arena);
+                arena_reset(reload_context.arena);
 
                 glGenerateMipmap(GL_TEXTURE_2D);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
@@ -1065,9 +1068,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             }
 
-            if (Absolute(input_state.x_direction) >= 1.0f && Absolute(input_state.y_direction) >= 1.0f) {
+            if (absolute(input_state.x_direction) >= 1.0f && absolute(input_state.y_direction) >= 1.0f) {
                 // TODO(gr3yknigh1): Fix strange floating-point bug for diagonal movement [2025/02/20]
-                NormalizeVector2F(&input_state.x_direction, &input_state.y_direction);
+                normalize_vector2f(&input_state.x_direction, &input_state.y_direction);
             }
 
             player_x += player_speed * input_state.x_direction * (float)dt;
@@ -1085,14 +1088,14 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            Vertex *vertexes = (Vertex *)ArenaAllocZero(&geometry_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC);
+            Vertex *vertexes = (Vertex *)arena_alloc_zero(&geometry_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC);
             Color4 rect_color = { 200, 100, 0, 255 };
 
             // XXX
             static Atlas atlas = { 32, 32 };
 
-            // size_t vertexes_count = GenerateRect(vertexes, player_x, player_y, 100, 100, rect_color);
-            size_t vertexes_count = GenerateRectAtlas(vertexes, player_x, player_y, 100, 100, atlas_location, &atlas, rect_color);
+            // size_t vertexes_count = generate_rect(vertexes, player_x, player_y, 100, 100, rect_color);
+            size_t vertexes_count = generate_rect_with_atlas(vertexes, player_x, player_y, 100, 100, atlas_location, &atlas, rect_color);
             size_t vertex_buffer_size = vertexes_count * sizeof(*vertexes);
             glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, vertexes, GL_DYNAMIC_DRAW);
 
@@ -1102,7 +1105,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
         PERF_BLOCK_END(DRAW);
 
-        ResetArena(&geometry_arena);
+        arena_reset(&geometry_arena);
 
         frame_counter++;
     }
@@ -1113,9 +1116,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     glDeleteProgram(basic_shader_program);
 
-    FreeArena(&asset_arena);
-    FreeArena(&page_arena);
-    FreeArena(&geometry_arena);
+    free_arena(&asset_arena);
+    free_arena(&page_arena);
+    free_arena(&geometry_arena);
 
     assert(FreeLibrary(opengl_module));
     CloseWindow(window); // TODO(gr3yknigh1): why it fails? [2025/02/23]
@@ -1126,7 +1129,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 }
 
 LRESULT CALLBACK
-Win32_WindowEventHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
+win32_window_message_handler(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     switch (message) {
 
@@ -1150,7 +1153,7 @@ Win32_WindowEventHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam
 }
 
 static void
-Win32_InitOpenGLContextExtensions(void)
+win32_init_opengl_context_extensions(void)
 {
     WNDCLASSA dummy_window_class;
     ZERO_STRUCT(&dummy_window_class);
@@ -1210,9 +1213,9 @@ Win32_InitOpenGLContextExtensions(void)
 }
 
 static HGLRC
-Win32_InitOpenGLContext(HDC device_context)
+win32_init_opengl_context(HDC device_context)
 {
-    Win32_InitOpenGLContextExtensions();
+    win32_init_opengl_context_extensions();
 
     int pixel_format_attribs[] = {
         WGL_DRAW_TO_WINDOW_ARB,
@@ -1268,7 +1271,7 @@ Win32_InitOpenGLContext(HDC device_context)
 }
 
 GLuint
-CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type)
+compile_shader_from_file(Arena *arena, const char *file_path, GLenum type)
 {
     // TODO(gr3yknigh1): Check for path existens and that it is file [2024/11/24]
 
@@ -1282,21 +1285,21 @@ CompileShaderFromFile(Arena *arena, const char *file_path, GLenum type)
 
     size_t string_buffer_size = file_size + 1;
 
-    char *string_buffer = (char *)ArenaAllocZero(arena, string_buffer_size, ARENA_ALLOC_POPABLE);
+    char *string_buffer = (char *)arena_alloc_zero(arena, string_buffer_size, ARENA_ALLOC_POPABLE);
     assert(string_buffer);
 
     fread(string_buffer, string_buffer_size, 1, file);
     fclose(file);
 
-    GLuint id = CompileShaderFromString(arena, string_buffer, type);
+    GLuint id = compile_shader_from_str8(arena, string_buffer, type);
 
-    assert(ArenaPop(arena, string_buffer));
+    assert(arena_pop(arena, string_buffer));
 
     return id;
 }
 
 GLuint
-CompileShaderFromString(Arena *arena, const char *string, GLenum type)
+compile_shader_from_str8(Arena *arena, const char *string, GLenum type)
 {
     GLuint id = glCreateShader(type);
     glShaderSource(id, 1, &string, 0);
@@ -1311,21 +1314,21 @@ CompileShaderFromString(Arena *arena, const char *string, GLenum type)
         assert(log_length);
 
         size_t log_buffer_size = log_length + 1;
-        char *log_buffer = (char *)ArenaAllocZero(arena, log_buffer_size, ARENA_ALLOC_POPABLE);
+        char *log_buffer = (char *)arena_alloc_zero(arena, log_buffer_size, ARENA_ALLOC_POPABLE);
         assert(log_buffer);
 
         glGetShaderInfoLog(id, (GLsizei)log_buffer_size, 0, log_buffer);
 
         assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
         /* DIE_MF("Failed to compile OpenGL shader! %s", logBuffer); */
-        ArenaPop(arena, log_buffer);
+        arena_pop(arena, log_buffer);
     }
 
     return id;
 }
 
 GLuint
-LinkShaderProgram(Arena *arena, GLuint vertex_shader, GLuint fragment_shader)
+link_shader_program(Arena *arena, GLuint vertex_shader, GLuint fragment_shader)
 {
     GLuint id = glCreateProgram();
 
@@ -1343,26 +1346,26 @@ LinkShaderProgram(Arena *arena, GLuint vertex_shader, GLuint fragment_shader)
         glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
 
         size_t log_buffer_size = log_length + 1;
-        char *log_buffer = (char *)ArenaAllocZero(arena, log_buffer_size, ARENA_ALLOC_POPABLE);
+        char *log_buffer = (char *)arena_alloc_zero(arena, log_buffer_size, ARENA_ALLOC_POPABLE);
         assert(log_buffer);
 
         glGetProgramInfoLog(id, (GLsizei)log_buffer_size, NULL, log_buffer);
 
         assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
         /* DIE_MF("Failed to link OpenGL program! %s", logBuffer); */
-        ArenaPop(arena, log_buffer);
+        arena_pop(arena, log_buffer);
     }
 
     return id;
 }
 
 bool
-MakeVertexBufferLayout(Arena *arena, VertexBufferLayout *layout, size32_t attributes_capacity)
+make_vertex_buffer_layout(Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity)
 {
     ZERO_STRUCT(layout);
 
-    layout->attributes = (VertexBufferAttribute *)ArenaAllocZero(
-        arena, attributes_capacity * sizeof(VertexBufferAttribute), ARENA_ALLOC_BASIC);
+    layout->attributes = (Vertex_Buffer_Attribute *)arena_alloc_zero(
+        arena, attributes_capacity * sizeof(Vertex_Buffer_Attribute), ARENA_ALLOC_BASIC);
 
     if (layout->attributes == nullptr) {
         return false;
@@ -1373,14 +1376,14 @@ MakeVertexBufferLayout(Arena *arena, VertexBufferLayout *layout, size32_t attrib
     return true;
 }
 
-VertexBufferAttribute *
-VertexBufferLayout_Push(VertexBufferLayout *layout, unsigned int count, GLenum type, size32_t size)
+Vertex_Buffer_Attribute *
+vertex_buffer_layout_push_attr(Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, size32_t size)
 {
     if (layout->attributes_count + 1 > layout->attributes_capacity) {
         return nullptr;
     }
 
-    VertexBufferAttribute *attribute = layout->attributes + layout->attributes_count;
+    Vertex_Buffer_Attribute *attribute = layout->attributes + layout->attributes_count;
     attribute->is_normalized = false;
     attribute->type = type;
     attribute->count = count;
@@ -1392,28 +1395,28 @@ VertexBufferLayout_Push(VertexBufferLayout *layout, unsigned int count, GLenum t
     return attribute;
 }
 
-VertexBufferAttribute *
-VertexBufferLayout_PushInt(VertexBufferLayout *layout, unsigned int count)
+Vertex_Buffer_Attribute *
+vertex_buffer_layout_push_integer(Vertex_Buffer_Layout *layout, unsigned int count)
 {
     size32_t attribute_size = sizeof(int);
-    return VertexBufferLayout_Push(layout, count, GL_INT, attribute_size);
+    return vertex_buffer_layout_push_attr(layout, count, GL_INT, attribute_size);
 }
 
-VertexBufferAttribute *
-VertexBufferLayout_PushFloat(VertexBufferLayout *layout, unsigned int count)
+Vertex_Buffer_Attribute *
+vertex_buffer_layout_push_float(Vertex_Buffer_Layout *layout, unsigned int count)
 {
     size32_t attribute_size = sizeof(float);
-    return VertexBufferLayout_Push(layout, count, GL_FLOAT, attribute_size);
+    return vertex_buffer_layout_push_attr(layout, count, GL_FLOAT, attribute_size);
 }
 
 void
-VertexBufferLayout_BuildAttributes(const VertexBufferLayout *layout)
+vertex_buffer_layout_build_attrs(const Vertex_Buffer_Layout *layout)
 {
     size_t offset = 0;
 
     for (unsigned int attribute_index = 0; attribute_index < layout->attributes_count;
          ++attribute_index) {
-        VertexBufferAttribute *attribute = layout->attributes + attribute_index;
+        Vertex_Buffer_Attribute *attribute = layout->attributes + attribute_index;
 
         glEnableVertexAttribArray(attribute_index);
         glVertexAttribPointer(
@@ -1425,7 +1428,7 @@ VertexBufferLayout_BuildAttributes(const VertexBufferLayout *layout)
 }
 
 Camera
-MakeCamera(Camera_ViewMode view_mode)
+make_camera(Camera_ViewMode view_mode)
 {
     Camera camera;
     ZERO_STRUCT(&camera);
@@ -1450,7 +1453,7 @@ MakeCamera(Camera_ViewMode view_mode)
 }
 
 void
-RotateCamera(Camera *camera, float x_offset, float y_offset)
+camera_rotate(Camera *camera, float x_offset, float y_offset)
 {
     x_offset *= camera->sensitivity;
     y_offset *= camera->sensitivity;
@@ -1472,14 +1475,14 @@ RotateCamera(Camera *camera, float x_offset, float y_offset)
 }
 
 glm::mat4
-GetCameraViewMatrix(Camera *camera)
+camera_get_view_matrix(Camera *camera)
 {
     return glm::lookAt(
         camera->position, camera->position + camera->front, camera->up);
 }
 
 glm::mat4
-GetCameraProjectionMatrix(Camera *camera, int viewport_width, int viewport_height)
+camera_get_projection_matrix(Camera *camera, int viewport_width, int viewport_height)
 {
     if (camera->view_mode == Camera_ViewMode::Perspective) {
         return glm::perspective(
@@ -1500,7 +1503,7 @@ GetCameraProjectionMatrix(Camera *camera, int viewport_width, int viewport_heigh
 }
 
 Arena
-MakeArena(size_t capacity)
+make_arena(size_t capacity)
 {
     Arena arena;
 
@@ -1516,7 +1519,7 @@ MakeArena(size_t capacity)
 }
 
 bool
-ArenaPop(Arena *arena, void *data)
+arena_pop(Arena *arena, void *data)
 {
     if (arena == nullptr || data == nullptr) {
         return false;
@@ -1536,7 +1539,7 @@ ArenaPop(Arena *arena, void *data)
 }
 
 size_t
-ResetArena(Arena *arena)
+arena_reset(Arena *arena)
 {
     size_t was_occupied = arena->occupied;
     arena->occupied = 0;
@@ -1544,7 +1547,7 @@ ResetArena(Arena *arena)
 }
 
 void *
-ArenaAlloc(Arena *arena, size_t size, int options)
+arena_alloc(Arena *arena, size_t size, int options)
 {
     if (arena == nullptr) {
         return nullptr;
@@ -1575,7 +1578,7 @@ ArenaAlloc(Arena *arena, size_t size, int options)
 void *
 ArenaAllocSet(Arena *arena, size_t size, char c, int options)
 {
-    void *allocated = ArenaAlloc(arena, size, options);
+    void *allocated = arena_alloc(arena, size, options);
 
     if (allocated == nullptr) {
         return allocated;
@@ -1586,13 +1589,13 @@ ArenaAllocSet(Arena *arena, size_t size, char c, int options)
 }
 
 void *
-ArenaAllocZero(Arena *arena, size_t size, int options)
+arena_alloc_zero(Arena *arena, size_t size, int options)
 {
     return ArenaAllocSet(arena, size, 0, options);
 }
 
 bool
-FreeArena(Arena *arena)
+free_arena(Arena *arena)
 {
     bool result = VirtualFree(arena->data, 0, MEM_RELEASE);
     ZERO_STRUCT(arena);
@@ -1600,7 +1603,7 @@ FreeArena(Arena *arena)
 }
 
 size_t
-GenerateRect(Vertex *vertexes, float x, float y, float width, float height, Color4 color)
+generate_rect(Vertex *vertexes, float x, float y, float width, float height, Color4 color)
 {
     size_t c = 0;
 
@@ -1619,7 +1622,7 @@ GenerateRect(Vertex *vertexes, float x, float y, float width, float height, Colo
 
 // TODO(gr3yknigh1): Separate configuration at atlas and mesh size [2025/02/26]
 size_t
-GenerateRectAtlas(Vertex *vertexes, float x, float y, float width, float height, Rect_F32 loc, Atlas *atlas, Color4 color)
+generate_rect_with_atlas(Vertex *vertexes, float x, float y, float width, float height, Rect_F32 loc, Atlas *atlas, Color4 color)
 {
     size_t c = 0;
 
@@ -1638,7 +1641,7 @@ GenerateRectAtlas(Vertex *vertexes, float x, float y, float width, float height,
 }
 
 int64_t
-GetPerfFrequency(void)
+perf_get_counter_frequency(void)
 {
     LARGE_INTEGER perf_frequency_result;
     QueryPerformanceFrequency(&perf_frequency_result);
@@ -1647,7 +1650,7 @@ GetPerfFrequency(void)
 }
 
 int64_t
-GetPerfCounter(void)
+perf_get_counter(void)
 {
     LARGE_INTEGER perf_counter_result;
     QueryPerformanceCounter(&perf_counter_result);
@@ -1656,16 +1659,16 @@ GetPerfCounter(void)
 }
 
 uint64_t
-GetCyclesCount(void)
+perf_get_cycles_count(void)
 {
     uint64_t cycles_count = __rdtsc();
     return cycles_count;
 }
 
 void
-Perf_BlockRecord_Print(const Perf_BlockRecord *record)
+perf_block_record_print(const Perf_Block_Record *record)
 {
-    int64_t perf_frequency = GetPerfFrequency();
+    int64_t perf_frequency = perf_get_counter_frequency();
 
     int64_t counter_elapsed = record->counter_end - record->counter_begin;
     int64_t ms_elapsed = (1000 * counter_elapsed) / perf_frequency;
@@ -1677,13 +1680,13 @@ Perf_BlockRecord_Print(const Perf_BlockRecord *record)
         record->function, record->label, counter_elapsed, ms_elapsed, mega_cycles_elapsed);
 }
 
-Win32_KeyState
-Win32_ConvertMSGToKeyState(MSG message)
+Win32_Key_State
+win32_convert_msg_to_key_state(MSG message)
 {
     //
     // @ref <https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input>
     //
-    Win32_KeyState key_state;
+    Win32_Key_State key_state;
 
 
     key_state.vk_code = LOWORD(message.wParam);
@@ -1708,33 +1711,33 @@ Win32_ConvertMSGToKeyState(MSG message)
 }
 
 Clock
-MakeClock(void)
+make_clock(void)
 {
     Clock clock;
-    clock.ticks_begin = GetPerfCounter();
+    clock.ticks_begin = perf_get_counter();
     clock.ticks_end = 0;
-    clock.frequency = GetPerfFrequency();
+    clock.frequency = perf_get_counter_frequency();
     return clock;
 }
 
 
 double
-TickClock(Clock *clock)
+clock_tick(Clock *clock)
 {
-    clock->ticks_end = GetPerfCounter();
+    clock->ticks_end = perf_get_counter();
     double elapsed = (double)(clock->ticks_end - clock->ticks_begin) / (double)clock->frequency;
-    clock->ticks_begin = GetPerfCounter();
+    clock->ticks_begin = perf_get_counter();
     return elapsed;
 }
 
 float
-Absolute(float x)
+absolute(float x)
 {
     return x < 0 ? -x : x;
 }
 
 void
-NormalizeVector2F(float *x, float *y)
+normalize_vector2f(float *x, float *y)
 {
     float magnitude = sqrtf(powf(*x, 2) + powf(*y, 2));
     *x /= magnitude;
@@ -1742,7 +1745,7 @@ NormalizeVector2F(float *x, float *y)
 }
 
 bool
-Win32_IsVkPressed(int vk)
+win32_is_vk_pressed(int vk)
 {
     short state = GetKeyState(vk);
     bool result = state >> 15;
@@ -1751,7 +1754,7 @@ Win32_IsVkPressed(int vk)
 
 
 bool
-LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char *file_path)
+load_bitmap_picture_from_file(Arena *arena, Bitmap_Picture *picture, const char *file_path)
 {
     FILE *file = fopen(file_path, "r");
 
@@ -1762,7 +1765,7 @@ LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char *file
     fread(&picture->header, sizeof(picture->header), 1, file);
     fread(&picture->dib_header, sizeof(picture->dib_header), 1, file);
 
-    picture->u.data = ArenaAllocZero(arena, picture->header.file_size, ARENA_ALLOC_BASIC);
+    picture->u.data = arena_alloc_zero(arena, picture->header.file_size, ARENA_ALLOC_BASIC);
     if (picture->u.data == nullptr) {
         return false;
     }
@@ -1777,13 +1780,13 @@ LoadBitmapPictureFromFile(Arena *arena, BitmapPicture *picture, const char *file
 }
 
 void
-Gl_TextureImage2D_FromBitmapPicture(void *data, size32_t width, size32_t height, BitmapPictureCompressionMethod compression_method, GLenum internal_format)
+gl_make_texture_from_bitmap_picture(void *data, size32_t width, size32_t height, Bitmap_Picture_Compression_Method compression_method, GLenum internal_format)
 {
-    assert(compression_method == BitmapPictureCompressionMethod::Bitfields);
+    assert(compression_method == Bitmap_Picture_Compression_Method::Bitfields);
 
     GLenum format = 0, type = 0;
 
-    if (compression_method == BitmapPictureCompressionMethod::Bitfields) {
+    if (compression_method == Bitmap_Picture_Compression_Method::Bitfields) {
         format = GL_BGRA;
         type = GL_UNSIGNED_BYTE;
     }
@@ -1807,23 +1810,23 @@ Lexer MakeLexer(char *buffer, size_t buffer_size);
 void Lexer_Advance(Lexer *lexer, int32_t count = 1);
 
 char     Lexer_Peek(Lexer *lexer, int32_t offset);
-StrView8 Lexer_PeekView(Lexer *lexer, int32_t offset);
+Str8_View8 Lexer_PeekView(Lexer *lexer, int32_t offset);
 
 bool     Lexer_CheckPeeked(Lexer *lexer, const char *s);
-bool     Lexer_CheckPeeked(Lexer *lexer, StrView8 s);
+bool     Lexer_CheckPeeked(Lexer *lexer, Str8_View8 s);
 
 bool     Lexer_ParseInt(Lexer *lexer, int *result);
-bool     Lexer_ParseStrToView(Lexer *lexer, StrView8 *sv);
+bool     Lexer_ParseStrToView(Lexer *lexer, Str8_View8 *sv);
 
-StrView8 Lexer_SkipUntil     (Lexer *lexer, char c);
-StrView8 Lexer_SkipUntilEndline(Lexer *lexer);
+Str8_View8 Lexer_SkipUntil     (Lexer *lexer, char c);
+Str8_View8 Lexer_SkipUntilEndline(Lexer *lexer);
 void     Lexer_SkipWhitespace(Lexer *lexer);
 
 bool Lexer_IsEndline(Lexer *lexer, bool *is_crlf = nullptr);
 bool Lexer_IsEnd(Lexer *lexer);
 
 Tilemap *
-LoadTilemapFromFile(Arena *arena, const char *file_path)
+load_tilemap_from_file(Arena *arena, const char *file_path)
 {
     FILE *file = fopen(file_path, "r");
 
@@ -1831,7 +1834,7 @@ LoadTilemapFromFile(Arena *arena, const char *file_path)
         return nullptr;
     }
 
-    Tilemap *tilemap = (Tilemap *)ArenaAllocZero(arena, sizeof(Tilemap), ARENA_ALLOC_BASIC);
+    Tilemap *tilemap = (Tilemap *)arena_alloc_zero(arena, sizeof(Tilemap), ARENA_ALLOC_BASIC);
     if (tilemap == nullptr) {
         return nullptr;
     }
@@ -1841,9 +1844,9 @@ LoadTilemapFromFile(Arena *arena, const char *file_path)
     fseek(file, 0, SEEK_SET);
     assert(file_size);
 
-    Arena file_arena = MakeArena(file_size);
+    Arena file_arena = make_arena(file_size);
 
-    char *file_buffer = (char *)ArenaAlloc(&file_arena, file_size, ARENA_ALLOC_BASIC);
+    char *file_buffer = (char *)arena_alloc(&file_arena, file_size, ARENA_ALLOC_BASIC);
     assert(file_buffer);
 
     fread(file_buffer, file_size, 1, file);
@@ -1851,11 +1854,11 @@ LoadTilemapFromFile(Arena *arena, const char *file_path)
 
     Lexer lexer = MakeLexer(file_buffer, file_size);
 
-    static constexpr StrView8 s_tilemap_directive = "@tilemap";
+    static constexpr Str8_View8 s_tilemap_directive = "@tilemap";
 
-    static constexpr StrView8 s_tilemap_image_bmp_format = "bmp";
+    static constexpr Str8_View8 s_tilemap_image_bmp_format = "bmp";
 
-    StrView8 tilemap_image_path_view;
+    Str8_View8 tilemap_image_path_view;
 
     while (!Lexer_IsEnd(&lexer)) {
         Lexer_SkipWhitespace(&lexer);
@@ -1882,7 +1885,7 @@ LoadTilemapFromFile(Arena *arena, const char *file_path)
 
             // TODO(gr3yknigh1): Add proper error report mechanizm. Error message in window, for example. [2025/02/24]
             assert(Lexer_CheckPeeked( &lexer, s_tilemap_image_bmp_format ));
-            tilemap->image.format = TilemapImageFormat::Bitmap;
+            tilemap->image.format = Tilemap_Image_Format::Bitmap;
             Lexer_Advance(&lexer, (int32_t)s_tilemap_image_bmp_format.length);
 
             Lexer_SkipWhitespace(&lexer);
@@ -1900,7 +1903,7 @@ LoadTilemapFromFile(Arena *arena, const char *file_path)
             // NOTE(gr3yknigh1): This can be fixed with adding stage with Token generation, like
             // proper lexers does [2025/02/26]
             tilemap->indexes_count = tilemap->row_count * tilemap->col_count;
-            tilemap->indexes = (int *)ArenaAllocZero(arena, tilemap->indexes_count * sizeof(*tilemap->indexes), ARENA_ALLOC_BASIC);
+            tilemap->indexes = (int *)arena_alloc_zero(arena, tilemap->indexes_count * sizeof(*tilemap->indexes), ARENA_ALLOC_BASIC);
 
             continue;
         }
@@ -1927,21 +1930,21 @@ LoadTilemapFromFile(Arena *arena, const char *file_path)
         Lexer_Advance(&lexer);
     }
 
-    tilemap->image.u.bitmap = (BitmapPicture *)ArenaAlloc(arena, sizeof(BitmapPicture), ARENA_ALLOC_BASIC);
+    tilemap->image.u.bitmap = (Bitmap_Picture *)arena_alloc(arena, sizeof(Bitmap_Picture), ARENA_ALLOC_BASIC);
 
     // TODO(gr3yknigh1): Factor this out [2025/02/24]
     assert(tilemap_image_path_view.length && tilemap_image_path_view.data);
 
     char *tilemap_image_path = (char *)HeapAlloc(GetProcessHeap(), (DWORD)(tilemap_image_path_view.length + 1), HEAP_ZERO_MEMORY);
-    assert(StrView8_CopyToNullTerminated(tilemap_image_path_view, tilemap_image_path, tilemap_image_path_view.length + 1));
+    assert(str8_view_copy_to_nullterminated(tilemap_image_path_view, tilemap_image_path, tilemap_image_path_view.length + 1));
 
     // TODO(gr3yknigh1): Generalize format validation [2025/02/24]
-    assert(tilemap->image.format == TilemapImageFormat::Bitmap);
-    assert(LoadBitmapPictureFromFile(arena, tilemap->image.u.bitmap, tilemap_image_path));
+    assert(tilemap->image.format == Tilemap_Image_Format::Bitmap);
+    assert(load_bitmap_picture_from_file(arena, tilemap->image.u.bitmap, tilemap_image_path));
 
     assert(HeapFree(GetProcessHeap(), 0, tilemap_image_path));
 
-    assert(FreeArena(&file_arena));
+    assert(free_arena(&file_arena));
 
     return tilemap;
 }
@@ -1992,7 +1995,7 @@ Lexer_Peek(Lexer *lexer, int32_t offset)
     return 0;
 }
 
-StrView8
+Str8_View8
 Lexer_PeekView(Lexer *lexer, int32_t offset)
 {
     size_t cursor_index = lexer->cursor - lexer->buffer;
@@ -2000,32 +2003,32 @@ Lexer_PeekView(Lexer *lexer, int32_t offset)
     // TODO(gr3yknigh1): Maybe make it signed? [2025/02/23]
     if (cursor_index + offset < lexer->buffer_size) {
         if (offset < 0) {
-            return StrView8(lexer->cursor + offset, -offset);
+            return Str8_View8(lexer->cursor + offset, -offset);
         } else if (offset > 0) {
-            return StrView8(lexer->cursor, offset);
+            return Str8_View8(lexer->cursor, offset);
         }
     }
-    return StrView8();  // do a better job next time
+    return Str8_View8();  // do a better job next time
 }
 
 bool
 Lexer_CheckPeeked(Lexer *lexer, const char *s)
 {
-    StrView8 sv(s);
+    Str8_View8 sv(s);
     return Lexer_CheckPeeked(lexer, sv);
 }
 
 bool
-Lexer_CheckPeeked(Lexer *lexer, StrView8 s)
+Lexer_CheckPeeked(Lexer *lexer, Str8_View8 s)
 {
-    StrView8 peek_view = Lexer_PeekView(lexer, (int32_t)s.length);
-    return StrView8_IsEquals(peek_view, s);
+    Str8_View8 peek_view = Lexer_PeekView(lexer, (int32_t)s.length);
+    return str8_view_is_equals(peek_view, s);
 }
 
-StrView8
+Str8_View8
 Lexer_SkipUntil(Lexer *lexer, char c)
 {
-    StrView8 ret;
+    Str8_View8 ret;
 
     ret.data = lexer->cursor;
 
@@ -2037,10 +2040,10 @@ Lexer_SkipUntil(Lexer *lexer, char c)
     return ret;
 }
 
-StrView8
+Str8_View8
 Lexer_SkipUntilEndline(Lexer *lexer)
 {
-    StrView8 ret;
+    Str8_View8 ret;
 
     ret.data = lexer->cursor;
 
@@ -2115,7 +2118,7 @@ Lexer_ParseInt(Lexer *lexer, int *result)
 }
 
 bool
-Lexer_ParseStrToView(Lexer *lexer, StrView8 *sv)
+Lexer_ParseStrToView(Lexer *lexer, Str8_View8 *sv)
 {
     if (lexer->lexeme != '"') {
         return false;
@@ -2133,7 +2136,7 @@ Lexer_ParseStrToView(Lexer *lexer, StrView8 *sv)
 }
 
 bool
-GetPathParent(const wchar_t *path, size_t path_length, StrView16 *out)
+path16_get_parent(const wchar_t *path, size_t path_length, Str16_View *out)
 {
 
     out->data = path;
@@ -2141,7 +2144,7 @@ GetPathParent(const wchar_t *path, size_t path_length, StrView16 *out)
     for (size_t index = path_length - 1; index > 0; --index) {
         wchar_t c = path[index];
 
-        if (c == GetPathSeparator()) {
+        if (c == path16_get_separator()) {
             size_t c_position = path_length - index - 1;
             out->length = c_position - 1;
             break;
@@ -2152,23 +2155,23 @@ GetPathParent(const wchar_t *path, size_t path_length, StrView16 *out)
 }
 
 wchar_t
-GetPathSeparator()
+path16_get_separator()
 {
     // TODO(gr3yknigh1): Add support for other platform [2025/03/01]
     return L'\\';
 }
 
 void
-MakeWatchDirContext(WatchDirContext *context)
+make_watch_dir_context(Watch_Dir_Context *context)
 {
     ZERO_STRUCT(context);
     context->should_stop.clear();
 }
 
 void
-WatchDirWorker(PVOID param)
+watch_dir_thread_worker(PVOID param)
 {
-    WatchDirContext *context = (WatchDirContext *)param;
+    Watch_Dir_Context *context = (Watch_Dir_Context *)param;
 
     HANDLE watch_dir = CreateFileW(context->target_dir,
         FILE_LIST_DIRECTORY, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -2189,11 +2192,11 @@ WatchDirWorker(PVOID param)
         ));
 
         if (context->notification_routine != nullptr) {
-            StrView16 file_name(file_notify_info->FileName, file_notify_info->FileNameLength / sizeof(*file_notify_info->FileName));
+            Str16_View file_name(file_notify_info->FileName, file_notify_info->FileNameLength / sizeof(*file_notify_info->FileName));
 
-            if ( (HAS_FLAG(context->watch_exts, WATCH_EXT_BMP)  && StrView16_EndsWith(file_name, WATCH_EXT_BMP_VIEW ) )
-              || (HAS_FLAG(context->watch_exts, WATCH_EXT_GLSL) && StrView16_EndsWith(file_name, WATCH_EXT_GLSL_VIEW) )) {
-                context->notification_routine(file_name, 0, (FileAction)file_notify_info->Action, context->parameter);
+            if ( (HAS_FLAG(context->watch_exts, WATCH_EXT_BMP)  && str16_view_endswith(file_name, WATCH_EXT_BMP_VIEW ) )
+              || (HAS_FLAG(context->watch_exts, WATCH_EXT_GLSL) && str16_view_endswith(file_name, WATCH_EXT_GLSL_VIEW) )) {
+                context->notification_routine(file_name, 0, (File_Action)file_notify_info->Action, context->parameter);
             }
 
         }
@@ -2203,14 +2206,14 @@ WatchDirWorker(PVOID param)
 }
 
 void
-Gl_ClearErrors(void)
+gl_clear_all_errors(void)
 {
     while (glGetError() != GL_NO_ERROR) {
     }
 }
 
 void
-Gl_DieOnError(void)
+gl_die_on_first_error(void)
 {
     GLenum errorCode = GL_NO_ERROR;
     while ((errorCode = glGetError()) != GL_NO_ERROR) {
