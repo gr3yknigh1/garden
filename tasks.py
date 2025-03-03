@@ -167,13 +167,14 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
     common_flags = ["/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"]
 
     msvc_compile(
-        c, [ join(code_dir, "garden.cpp") ],
+        c, [ join(code_dir, "garden.cpp"), join(code_dir, "garden_platform.cpp") ], # TODO(gr3yknigh1): Move garden_platform.cpp away in library [2025/03/03]
         output=join(output_dir(build_type), GAMEPLAY_DLL_NAME),
         includes=[
             join(project_dir, "glad")
         ],
         defines=dict(
-            GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME
+            GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
+            GARDEN_GAMEPLAY_CODE=1,
         ),
         libs=[],
         flags=[*common_flags],
@@ -195,6 +196,7 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
                 _CRT_SECURE_NO_WARNINGS=1,
                 GARDEN_ASSET_DIR=quote_path(assets_dir),
                 GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
+                GARDEN_GAMEPLAY_CODE=0,
             ),
             includes=[
                 join(project_dir, "glad"),

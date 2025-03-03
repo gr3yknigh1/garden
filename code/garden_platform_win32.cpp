@@ -8,7 +8,6 @@
 //
 #include <atomic>   // std::atomic_flag
 
-#include <math.h>   // sqrtf
 #include <assert.h> // assert
 #include <stdio.h>  // puts, printf, FILE, fopen, freopen, fseek, fclose
 #include <ctype.h>  // isspace
@@ -28,71 +27,21 @@
 #include "garden_gameplay.h"
 #include "garden_platform.h"
 
-#if !defined(STRINGIFY_IMPL)
-    #define STRINGIFY_IMPL(X) #X
-#endif
-
-#if !defined(STRINGIFY)
-    #define STRINGIFY(X) STRINGIFY_IMPL(X)
-#endif
-
 #if !defined(GARDEN_ASSET_DIR)
     #error "Dev asset directory is not defined!"
 #else
     #pragma message( "Using DEV asset dir: '" STRINGIFY(GARDEN_ASSET_DIR) "'" )
 #endif
 
-#if !defined(MAKE_FLAG)
-    #define MAKE_FLAG(INDEX) (1 << (INDEX))
-#endif
-
-#if !defined(HAS_FLAG)
-    #define HAS_FLAG(MASK, FLAG) (((MASK) & (FLAG)) == (FLAG))
-#endif
-
-#if !defined(LITERAL)
-    #if defined(__cplusplus)
-        #define LITERAL(X) X
-    #else
-        #define LITERAL(X) (X)
-    #endif
-#endif
-
-#if !defined(STATIC_ARRAY_COUNT)
-    #define STATIC_ARRAY_COUNT(ARRAY_PTR) (sizeof((ARRAY_PTR)) / sizeof(*(ARRAY_PTR)))
-#endif
-
+// TODO(gr3yknigh1): Replace with more non-platform dependent code [2025/03/03]
 #if !defined(ZERO_STRUCT)
     #define ZERO_STRUCT(STRUCT_PTR) ZeroMemory((STRUCT_PTR), sizeof(*(STRUCT_PTR)))
 #endif
 
+
 typedef int bool32_t;
 typedef unsigned int size32_t;
-typedef int packed_rgba_t;
 
-static_assert(sizeof(packed_rgba_t) == 4);
-
-#if !defined(MAKE_PACKED_RGBA)
-    #define MAKE_PACKED_RGBA(R, G, B, A) (((R) << 24) + ((G) << 16) + ((B) << 8) + (A))
-#endif
-
-#pragma pack(push, 1)
-struct Vertex {
-    float x, y;
-    float s, t;
-    packed_rgba_t color;
-};
-#pragma pack(pop)
-
-static_assert(sizeof(Vertex) == (sizeof(float) * 4 + sizeof(packed_rgba_t)));
-
-#pragma pack(push, 1)
-struct Color_RGBA_U8 {
-    uint8_t r, g, b, a;
-};
-#pragma pack(pop)
-
-typedef Color_RGBA_U8 Color4;
 
 //
 // String handling:
@@ -299,28 +248,6 @@ void perf_block_record_print(const Perf_Block_Record *record);
 
 
 //
-// Allocators:
-//
-
-struct Arena {
-    void *data;
-    size_t capacity;
-    size_t occupied;
-};
-
-Arena make_arena(size_t capacity);
-bool  free_arena(Arena *arena);
-
-#define ARENA_ALLOC_BASIC   MAKE_FLAG(0)
-#define ARENA_ALLOC_POPABLE MAKE_FLAG(1)
-
-void * arena_alloc(Arena *arena, size_t size, int options);
-void * arena_alloc_zero(Arena *arena, size_t size, int options);
-bool   arena_pop(Arena *arena, void *data);
-size_t arena_reset(Arena *arena);
-
-
-//
 // WGL: Context initialization.
 //
 
@@ -464,31 +391,6 @@ Vertex_Buffer_Attribute *vertex_buffer_layout_push_integer(Vertex_Buffer_Layout 
 void vertex_buffer_layout_build_attrs(const Vertex_Buffer_Layout *layout);
 
 
-struct Rect_F32 {
-    float x;
-    float y;
-    float width;
-    float height;
-};
-
-
-// TODO(gr3yknigh1): Replace with integers? [2025/02/26]
-struct Atlas {
-    float x_pixel_count;
-    float y_pixel_count;
-};
-
-
-//
-// @param[out] rect Output array of vertexes
-//
-size_t generate_rect(Vertex *rect, float x, float y, float width, float height, Color4 color);
-
-//
-// @param[out] rect Output array of vertexes
-//
-size_t generate_rect_with_atlas(Vertex *rect, float x, float y, float width, float height, Rect_F32 atlas_location, Atlas *altas, Color4 color);
-
 struct Win32_Key_State {
     short vk_code;
     short flags;
@@ -532,13 +434,6 @@ struct Clock {
 Clock make_clock(void);
 
 double clock_tick(Clock *clock);
-
-//
-// Linear:
-//
-
-float absolute(float x);
-void normalize_vector2f(float *x, float *y);
 
 //
 // Media:
@@ -702,6 +597,7 @@ struct Gameplay {
     HMODULE module;
 
     Game_On_Init_Fn_Type * on_init;
+    Game_On_Load_Fn_Type * on_load;
     Game_On_Tick_Fn_Type * on_tick;
     Game_On_Draw_Fn_Type * on_draw;
     Game_On_Fini_Fn_Type * on_fini;
@@ -948,19 +844,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Game mainloop:
     //
-    Arena geometry_arena = make_arena(sizeof(Vertex) * 1024);
-
-    float player_x = 0, player_y = 0, player_speed = 300.0f;
-
     Clock clock = make_clock();
 
-    Input_State input_state;
-    ZERO_STRUCT(&input_state);
-
     uint64_t frame_counter = 0;
-
-    /// XXX
-    static Rect_F32 atlas_location = { 0, 0, 16, 16 };
 
     //
     // Load game code:
@@ -971,7 +857,11 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Platform_Context platform_context;
     ZERO_STRUCT(&platform_context);
 
+    platform_context.persist_arena = make_arena(1024);
+    platform_context.vertexes_arena = make_arena(sizeof(Vertex) * 1024);
+
     Game_Context *game_context = reinterpret_cast<Game_Context *>(gameplay.on_init(&platform_context));
+    gameplay.on_load(&platform_context, game_context);
 
     while (!global_should_terminate) {
         double dt = clock_tick(&clock);
@@ -987,6 +877,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
             reload_context.should_reload_gameplay.clear();
             unload_gameplay(&gameplay);
             gameplay = load_gameplay(STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME));
+            gameplay.on_load(&platform_context, game_context);
         }
 
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
@@ -1004,35 +895,35 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                         global_should_terminate = true;
                     }
 
-                    if (key.vk_code == 0x45) {  // 0x45 - `E` key
-                        atlas_location = { 0, 0, 16, 16 };
-                    }
+                    // if (key.vk_code == 0x45) {  // 0x45 - `E` key
+                    //     atlas_location = { 0, 0, 16, 16 };
+                    // }
 
-                    if (key.vk_code == 0x46) {  // 0x46 - `F` key
-                        atlas_location = { 16, 0, 16, 16 };
-                    }
+                    // if (key.vk_code == 0x46) {  // 0x46 - `F` key
+                    //     atlas_location = { 16, 0, 16, 16 };
+                    // }
 
                     if (!WIN32_KEYSTATE_IS_RELEASED(&key)) {
                         if (key.vk_code == VK_LEFT) {
-                            input_state.x_direction = -1;
+                            platform_context.input_state.x_direction = -1;
                         } else if (key.vk_code == VK_RIGHT) {
-                            input_state.x_direction = +1;
+                            platform_context.input_state.x_direction = +1;
                         }
 
                         if (key.vk_code == VK_DOWN) {
-                            input_state.y_direction = -1;
+                            platform_context.input_state.y_direction = -1;
                         } else if (key.vk_code == VK_UP) {
-                            input_state.y_direction = +1;
+                            platform_context.input_state.y_direction = +1;
                         }
                     } else {
                         if ((key.vk_code == VK_LEFT   && !win32_is_vk_pressed(VK_RIGHT))
                         || ((key.vk_code == VK_RIGHT) && !win32_is_vk_pressed(VK_LEFT))) {
-                            input_state.x_direction = 0;
+                            platform_context.input_state.x_direction = 0;
                         }
 
                         if ((key.vk_code == VK_DOWN && !win32_is_vk_pressed(VK_UP))
                          || (key.vk_code == VK_UP && !win32_is_vk_pressed(VK_DOWN))) {
-                            input_state.y_direction = 0;
+                            platform_context.input_state.y_direction = 0;
                         }
                     }
 
@@ -1054,9 +945,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         // Update:
         //
 
-        gameplay.on_tick(&platform_context, game_context, static_cast<float>(dt));
-
         PERF_BLOCK_BEGIN(UPDATE);
+
+            gameplay.on_tick(&platform_context, game_context, static_cast<float>(dt));
 
             //
             // Asset Hot reload:
@@ -1083,44 +974,30 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             }
 
-            if (absolute(input_state.x_direction) >= 1.0f && absolute(input_state.y_direction) >= 1.0f) {
-                // TODO(gr3yknigh1): Fix strange floating-point bug for diagonal movement [2025/02/20]
-                normalize_vector2f(&input_state.x_direction, &input_state.y_direction);
-            }
-
-            player_x += player_speed * input_state.x_direction * (float)dt;
-            player_y += player_speed * input_state.y_direction * (float)dt;
-
         PERF_BLOCK_END(UPDATE);
 
         //
         // Draw:
         //
 
-        gameplay.on_draw(&platform_context, game_context, static_cast<float>(dt));
-
         PERF_BLOCK_BEGIN(DRAW);
+
+            gameplay.on_draw(&platform_context, game_context, static_cast<float>(dt));
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            Vertex *vertexes = (Vertex *)arena_alloc_zero(&geometry_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC);
-            Color4 rect_color = { 200, 100, 0, 255 };
+            if (platform_context.vertexes_count > 0) {
+                size_t vertex_buffer_size = platform_context.vertexes_count * sizeof(*platform_context.vertexes);
+                glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, platform_context.vertexes, GL_DYNAMIC_DRAW);
+                glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
 
-            // XXX
-            static Atlas atlas = { 32, 32 };
-
-            // size_t vertexes_count = generate_rect(vertexes, player_x, player_y, 100, 100, rect_color);
-            size_t vertexes_count = generate_rect_with_atlas(vertexes, player_x, player_y, 100, 100, atlas_location, &atlas, rect_color);
-            size_t vertex_buffer_size = vertexes_count * sizeof(*vertexes);
-            glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, vertexes, GL_DYNAMIC_DRAW);
-
-            glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
+                platform_context.vertexes_count = 0;
+                arena_reset(&platform_context.vertexes_arena);
+            }
 
             assert(SwapBuffers(window_device_context));
 
         PERF_BLOCK_END(DRAW);
-
-        arena_reset(&geometry_arena);
 
         frame_counter++;
     }
@@ -1133,7 +1010,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     free_arena(&asset_arena);
     free_arena(&page_arena);
-    free_arena(&geometry_arena);
+    free_arena(&platform_context.vertexes_arena);
+    free_arena(&platform_context.persist_arena);
 
     assert(FreeLibrary(opengl_module));
     CloseWindow(window); // TODO(gr3yknigh1): why it fails? [2025/02/23]
@@ -1516,144 +1394,6 @@ camera_get_projection_matrix(Camera *camera, int viewport_width, int viewport_he
     exit(1);
 }
 
-Arena
-make_arena(size_t capacity)
-{
-    Arena arena;
-
-    arena.data = VirtualAlloc(
-        0, capacity,
-        MEM_COMMIT | MEM_RESERVE,
-        PAGE_READWRITE);
-
-    arena.capacity = capacity;
-    arena.occupied = 0;
-
-    return arena;
-}
-
-bool
-arena_pop(Arena *arena, void *data)
-{
-    if (arena == nullptr || data == nullptr) {
-        return false;
-    }
-
-    if (arena->data == nullptr || arena->occupied < sizeof(arena->occupied) || arena->capacity == 0) {
-        return false;
-    }
-
-    size_t *data_size = ((size_t *)data) - 1;
-
-    assert((char *)data + *data_size == (char *)arena->data + arena->occupied);
-    arena->occupied -= *data_size;
-    arena->occupied -= sizeof(*data_size);
-
-    return true;
-}
-
-size_t
-arena_reset(Arena *arena)
-{
-    size_t was_occupied = arena->occupied;
-    arena->occupied = 0;
-    return was_occupied;
-}
-
-void *
-arena_alloc(Arena *arena, size_t size, int options)
-{
-    if (arena == nullptr) {
-        return nullptr;
-    }
-
-    size_t additionals_size = 0;
-
-    if (HAS_FLAG(options, ARENA_ALLOC_POPABLE)) {
-        additionals_size = sizeof(size);
-    }
-
-    if (arena->occupied + size + additionals_size > arena->capacity) {
-        return nullptr;
-    }
-
-    void *allocated = ((char *)arena->data) + arena->occupied;
-
-    if (HAS_FLAG(options, ARENA_ALLOC_POPABLE)) {
-        *((size_t *)allocated) = size;
-
-        allocated = (char *)allocated + additionals_size;
-    }
-
-    arena->occupied += size + additionals_size;
-    return allocated;
-}
-
-void *
-arena_alloc_set(Arena *arena, size_t size, char c, int options)
-{
-    void *allocated = arena_alloc(arena, size, options);
-
-    if (allocated == nullptr) {
-        return allocated;
-    }
-
-    memset(allocated, c, size);
-    return allocated;
-}
-
-void *
-arena_alloc_zero(Arena *arena, size_t size, int options)
-{
-    return arena_alloc_set(arena, size, 0, options);
-}
-
-bool
-free_arena(Arena *arena)
-{
-    bool result = VirtualFree(arena->data, 0, MEM_RELEASE);
-    ZERO_STRUCT(arena);
-    return result;
-}
-
-size_t
-generate_rect(Vertex *vertexes, float x, float y, float width, float height, Color4 color)
-{
-    size_t c = 0;
-
-    // bottom-left triangle
-    vertexes[c++] = { x + 0    , y + 0,      0, 0, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
-    vertexes[c++] = { x + width, y + 0,      1, 0, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-right
-    vertexes[c++] = { x + width, y + height, 1, 1, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
-
-    // top-right triangle
-    vertexes[c++] = { x + 0    , y + 0,      0, 0, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
-    vertexes[c++] = { x + width, y + height, 1, 1, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
-    vertexes[c++] = { x + 0,     y + height, 0, 1, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };
-
-    return c;
-}
-
-// TODO(gr3yknigh1): Separate configuration at atlas and mesh size [2025/02/26]
-size_t
-generate_rect_with_atlas(Vertex *vertexes, float x, float y, float width, float height, Rect_F32 loc, Atlas *atlas, Color4 color)
-{
-    size_t c = 0;
-
-
-    // bottom-left triangle
-    vertexes[c++] = { x + 0    , y + 0,      (loc.x + 0)         / atlas->x_pixel_count, (loc.y + 0)          / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
-    vertexes[c++] = { x + width, y + 0,      (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + 0)          / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-right
-    vertexes[c++] = { x + width, y + height, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
-
-    // top-right triangle
-    vertexes[c++] = { x + 0    , y + 0,      (loc.x + 0)         / atlas->x_pixel_count, (loc.y + 0)          / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // bottom-left
-    vertexes[c++] = { x + width, y + height, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };  // top-right
-    vertexes[c++] = { x + 0,     y + height, (loc.x + 0)         / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count, MAKE_PACKED_RGBA(color.r, color.g, color.b, color.a) };
-
-    return c;
-}
-
 int64_t
 perf_get_counter_frequency(void)
 {
@@ -1742,20 +1482,6 @@ clock_tick(Clock *clock)
     double elapsed = (double)(clock->ticks_end - clock->ticks_begin) / (double)clock->frequency;
     clock->ticks_begin = perf_get_counter();
     return elapsed;
-}
-
-float
-absolute(float x)
-{
-    return x < 0 ? -x : x;
-}
-
-void
-normalize_vector2f(float *x, float *y)
-{
-    float magnitude = sqrtf(powf(*x, 2) + powf(*y, 2));
-    *x /= magnitude;
-    *y /= magnitude;
 }
 
 bool
@@ -2264,6 +1990,9 @@ load_gameplay(const char *module_path)
 
     gameplay.on_init = reinterpret_cast<Game_On_Init_Fn_Type *>(GetProcAddress(gameplay.module, GAME_ON_INIT_FN_NAME));
     assert(gameplay.on_init);
+
+    gameplay.on_load = reinterpret_cast<Game_On_Load_Fn_Type *>(GetProcAddress(gameplay.module, GAME_ON_LOAD_FN_NAME));
+    assert(gameplay.on_load);
 
     gameplay.on_tick = reinterpret_cast<Game_On_Tick_Fn_Type *>(GetProcAddress(gameplay.module, GAME_ON_TICK_FN_NAME));
     assert(gameplay.on_tick);
