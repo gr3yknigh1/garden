@@ -13,7 +13,7 @@ SortIncludes: Never
 AlignEscapedNewlines: DontAlign
 AlwaysBreakTemplateDeclarations: Yes
 
-IndentPPDirectives: None
+IndentPPDirectives: BeforeHash
 
 # LLVM Style defaults.
 AlignArrayOfStructures: None
