@@ -1,29 +1,20 @@
 
-=========================| My Personal Agile Task Tracker |===========================
+My TODOs
+--------
 
-- Convert naming:
-    - types: My_Struct_Or_Other_Type
-    - variables, function arguments, structure members: snake_case_name
+Out of order.
 
-======================================================================================
-
-Demos:
-
-- 2D prototype game. I want to make sample game for testing 2D renderer.
-  It will be very thin at first: maybe expose OpenGL API?
-
-  Rendering:
-    - Quads                       [V]
-    - Atlas texture render        [V]
-
-  Audio:
-    - .wav file support
-    - Channeling
-
-  Gameplay:
-    - 2D Quad Collisions
-
-  Etc:
-    - Hot-reload of assets (proto) [V]
-
-======================================================================================
+- [V] Basic atlas rendering
+- [V] Basic input-layer
+- [V] Hot-reload gameplay code
+- [V] Hot-reload assets (draft)
+- [ ] Unify asset hot-reload system (make it so you define assets to load and track them changing on disk
+- [ ] Sine-wave play with XAudio2 (or DirectSound?)
+- [ ] Play .wav files with XAudio2
+- [ ] Rework sprite rendering from atlas: make it so you can index sprites in atlas more easly (and hot-reload it)
+- [ ] Sprite collision
+- [ ] Tilemap rendering (map)
+- [ ] Rework input system? I don't like that platform-layer defines changes for Input_State
+- [ ] Implement gamepad support (with DirectInput, like in `gr3yknigh1/gfs`)
+- [ ] Bring some kind of UI library (like ImGUI)
+- [ ] Text rendering (brobably with freetype library)
