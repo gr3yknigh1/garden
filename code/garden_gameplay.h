@@ -13,11 +13,11 @@
 
 struct Game_Context;
 
-typedef void * (Game_On_Init_Fn_Type)(Platform_Context *platform);
-typedef void   (Game_On_Load_Fn_Type)(Platform_Context *platform, Game_Context *game);
-typedef void   (Game_On_Tick_Fn_Type)(Platform_Context *platform, Game_Context *game, float delta_time);
-typedef void   (Game_On_Draw_Fn_Type)(Platform_Context *platform, Game_Context *game, float delta_time);
-typedef void   (Game_On_Fini_Fn_Type)(Platform_Context *platform, Game_Context *game);
+typedef void *(Game_On_Init_Fn_Type)(Platform_Context *platform);
+typedef void (Game_On_Load_Fn_Type)(Platform_Context *platform, Game_Context *game);
+typedef void (Game_On_Tick_Fn_Type)(Platform_Context *platform, Game_Context *game, float delta_time);
+typedef void (Game_On_Draw_Fn_Type)(Platform_Context *platform, Game_Context *game, float delta_time);
+typedef void (Game_On_Fini_Fn_Type)(Platform_Context *platform, Game_Context *game);
 
 
 #if !defined(GARDEN_GAMEPLAY_DLL_NAME)

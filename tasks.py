@@ -118,7 +118,7 @@ def quote_path(s: str) -> str:
     return s
 
 @task(default=True)
-def build(c, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False):
+def build(c, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False, enable_crt_alloc=False):
     """Builds entire project.
     """
     if clean:
@@ -164,7 +164,20 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
 
     c.run("echo I: Compiling game code...")
 
-    common_flags = ["/MTd", "/Zi", "/DEBUG:FULL", "/std:c++20", "/W4", "/Od", "/GR-", "/Oi"]
+    if False:
+        msvc_conf = MsvcConf(
+            runtime=MsvcRuntime.StaticDebug,
+            debug=MsvcDebugOpt.Full,
+        )
+
+    common_compile_flags = ["/MTd", "/Zi", "/std:c++20", "/W4", "/Od", "/GR-"]
+    common_link_flags = ["/DEBUG:FULL"]
+    common_defines = dict(
+        GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
+    )
+
+    if enable_crt_alloc:
+        common_defines.update(dict(GARDEN_USE_CRT_ALLOCATIONS=1))
 
     msvc_compile(
         c, [ join(code_dir, "garden.cpp"), join(code_dir, "garden_platform.cpp") ], # TODO(gr3yknigh1): Move garden_platform.cpp away in library [2025/03/03]
@@ -173,17 +186,22 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
             join(project_dir, "glad")
         ],
         defines=dict(
-            GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
+            **common_defines,
             GARDEN_GAMEPLAY_CODE=1,
         ),
         libs=[],
-        flags=[*common_flags],
+        link_flags=[*common_link_flags],
+        compile_flags=[*common_compile_flags],
         env=build_env,
         only_preprocessor=only_preprocessor, unicode_support=True, is_dll=True
     )
 
     garden_output_exe = join(output_dir(build_type), "garden.exe")
-    garden_platform_sources = [ join(code_dir, "garden_platform.cpp"), join(project_dir, "glad", "glad.c"), join(project_dir, "glad", "glad_wgl.c") ]
+    garden_platform_sources = [
+        join(code_dir, "garden_platform.cpp"),
+        join(project_dir, "glad", "glad.c"),
+        join(project_dir, "glad", "glad_wgl.c")
+    ]
 
     if not is_file_busy(garden_output_exe):
         c.run("echo I: Compiling platform runtime...")
@@ -193,17 +211,17 @@ def build(c, build_type=default_build_type, clean=False, reconfigure=False, only
             output=garden_output_exe,
             libs=["kernel32.lib", "user32.lib", "gdi32.lib", glm_library(build_type)],
             defines=dict(
+                **common_defines,
                 _CRT_SECURE_NO_WARNINGS=1,
-                GARDEN_ASSET_DIR=quote_path(assets_dir),
-                GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
+                GARDEN_ASSET_FOLDER=quote_path(assets_dir),
                 GARDEN_GAMEPLAY_CODE=0,
             ),
             includes=[
                 join(project_dir, "glad"),
                 glm_folder,
             ],
-            link_flags=["/INCREMENTAL"],
-            flags=[*common_flags],
+            link_flags=[*common_link_flags],
+            compile_flags=[*common_compile_flags],
             env=build_env,
             only_preprocessor=only_preprocessor, unicode_support=True
         )
@@ -240,7 +258,7 @@ def msvc_compile(
     libs: list[str] | None=None,
     defines: dict[str, Any] | None=None,
     includes: list[str] | None=None,
-    flags: list[str] | None=None,
+    compile_flags: list[str] | None=None,
     link_flags: list[str] | None=None,
     env: dict[str, Any] | None=None,
     only_preprocessor=False,
@@ -254,8 +272,8 @@ def msvc_compile(
     if libs is None:
         libs = []
 
-    if flags is None:
-        flags = []
+    if compile_flags is None:
+        compile_flags = []
 
     if link_flags is None:
         link_flags = []
@@ -273,12 +291,12 @@ def msvc_compile(
         ))
 
     if only_preprocessor:
-        flags.append("/P")
+        compile_flags.append("/P")
 
     if is_dll:
         link_flags.append("/DLL")
 
-    flags_formatted = " ".join(flags)
+    compile_flags_formatted = " ".join(compile_flags)
     defines_formatted = msvc_format_defines(defines)
     includes_formatted = msvc_format_includes(includes)
     libs_formatted = " ".join(libs)
@@ -287,7 +305,7 @@ def msvc_compile(
     output_formatted = f"/Fe:{output}"
 
     options = " ".join([
-        flags_formatted, defines_formatted, sources_formatted, output_formatted, includes_formatted, libs_formatted, link_flags_formatted
+        compile_flags_formatted, defines_formatted, sources_formatted, output_formatted, includes_formatted, libs_formatted, link_flags_formatted
     ])
 
     return c.run(

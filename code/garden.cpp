@@ -27,7 +27,7 @@ void normalize_vector2f(float *x, float *y);
 extern "C" __declspec(dllexport) void *
 game_on_init(Platform_Context *platform)
 {
-    Game_Context *game = static_cast<Game_Context *>(arena_alloc_zero(&platform->persist_arena, sizeof(game), 0));
+    Game_Context *game = static_cast<Game_Context *>(mm::arena_alloc_zero(&platform->persist_arena, sizeof(game), 0));
 
     game->player_x = 20;
     game->player_y = 20;
@@ -40,6 +40,7 @@ game_on_init(Platform_Context *platform)
 extern "C" __declspec(dllexport) void
 game_on_load(Platform_Context *platform, Game_Context *game)
 {
+    (void)platform;
     game->player_speed = 300;
 }
 
