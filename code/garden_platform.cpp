@@ -9,6 +9,8 @@
 
 #include <assert.h>
 
+#include <memory.h>
+
 #if defined(GARDEN_USE_CRT_ALLOCATIONS)
 
     #define _CRTDBG_MAP_ALLOC
@@ -193,6 +195,12 @@ mm::zero_memory(void *p, size_t size)
     for (size_t byte_index = 0; byte_index < size; ++byte_index) {
         static_cast<mm::byte *>(p)[byte_index] = 0;
     }
+}
+
+void
+mm::copy_memory(void *dst, const void *src, size_t size)
+{
+    memcpy(dst, src, size);
 }
 
 void *
@@ -476,4 +484,54 @@ mm::get_page_size()
     GetSystemInfo(&systemInfo);
     result = systemInfo.dwPageSize;
     return result;
+}
+
+
+bool
+mm::reset(mm::Stack_View *view) {
+    view->occupied = 0;
+    return true;
+}
+
+bool
+mm::reset(mm::Block_Allocator *allocator, void *data) {
+    bool result = false;
+
+    FOR_LINKED_LIST(it, &allocator->blocks) {
+        if (it->stack.data == data) {
+            result = mm::reset(&it->stack);
+            break;
+        }
+    }
+
+    return result;
+}
+
+void *
+mm::first(mm::Block_Allocator *allocator)
+{
+    assert(allocator);
+
+    if (!allocator->blocks.count) {
+        return nullptr;
+    }
+
+    void *result = allocator->blocks.head->stack.data;
+    return result;
+}
+
+void *
+mm::next(mm::Block_Allocator *allocator, void *data)
+{
+    assert(allocator && data);
+
+    // NOTE(gr3yknigh1): Very inefficient [2025/03/10]
+    // @perf
+
+    FOR_LINKED_LIST(it, &allocator->blocks) {
+        if (it->stack.data == data && it->next != nullptr) {
+            return it->next->stack.data;
+        }
+    }
+    return nullptr;
 }

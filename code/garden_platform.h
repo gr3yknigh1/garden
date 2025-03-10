@@ -56,6 +56,8 @@ namespace mm
 
     void zero_memory(void *p, size_t size);
 
+    void copy_memory(void *dst, const void *src, size_t size);
+
     template <typename Ty>
     inline void
     zero_struct(Ty *p)
@@ -133,6 +135,8 @@ namespace mm
 
     bool can_hold(Stack_View *view, size_t size);
 
+    bool reset(Stack_View *view);
+
     void *allocate(Stack_View *view, size_t size);
 
     //
@@ -191,6 +195,11 @@ namespace mm
     {
         return static_cast<Ty *>(mm::allocate(allocator, sizeof(Ty)));
     }
+
+    bool reset(Block_Allocator *allocator, void *data);
+
+    void *first(Block_Allocator *allocator);
+    void *next(Block_Allocator *allocator, void *data);
 
     bool destroy_block_allocator(Block_Allocator *allocator);
 

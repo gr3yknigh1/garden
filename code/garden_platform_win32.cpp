@@ -125,9 +125,8 @@ str8_view_is_equals(Str8_View a, const char *str)
 }
 
 
-// TODO: fix typo in naming ...
 constexpr size_t
-str8_get_length(const wchar_t *s) noexcept
+str16_get_length(const wchar_t *s) noexcept
 {
     size_t result = 0;
 
@@ -143,7 +142,7 @@ struct Str16_View {
     size_t length;
 
     constexpr Str16_View() noexcept : data(nullptr), length(0) {}
-    constexpr Str16_View(const wchar_t *data_) noexcept : data(data_), length(str8_get_length(data_)) {}
+    constexpr Str16_View(const wchar_t *data_) noexcept : data(data_), length(str16_get_length(data_)) {}
     constexpr Str16_View(const wchar_t *data_, size_t length_) noexcept : data(data_), length(length_) {}
 };
 
@@ -204,6 +203,37 @@ str16_view_is_equals(Str16_View a, const wchar_t *str) noexcept
     return str16_view_is_equals(a, b);
 }
 
+constexpr bool
+str16_view_is_equals(Str16_View a, Str8_View b) noexcept
+{
+    if (a.length != b.length) {
+        return false;
+    }
+
+    // TODO(gr3yknigh1): Do vectorization [2025/01/03]
+    for (size_t i = 0; i < a.length; ++i) {
+        const mm::byte *c16 = reinterpret_cast<const mm::byte *>(a.data + i);
+
+        if (c16[1] != 0) {
+            return false;
+        }
+
+        mm::byte c8 = b.data[i];
+
+        if (c16[0] != c8) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+constexpr bool
+str16_view_is_equals(Str16_View a, const char *str) noexcept
+{
+    Str8_View b(str);
+    return str16_view_is_equals(a, b);
+}
 
 wchar_t path16_get_separator();
 
@@ -587,32 +617,25 @@ enum struct File_Action {
     RenamedNewName  = FILE_ACTION_RENAMED_NEW_NAME,
 };
 
-typedef int watch_ext_mask_t;
-typedef void (* watch_notification_routine_t)(const Str16_View file_name, watch_ext_mask_t ext, File_Action action, void *parameter);
+struct Watch_Context;
 
-struct Watch_Dir_Context {
+typedef int watch_ext_mask_t;
+typedef void (* watch_notification_routine_t)(Watch_Context *watch_context, const Str16_View file_name, File_Action action, void *parameter);
+
+struct Watch_Context {
     std::atomic_flag should_stop;
     const wchar_t *target_dir;
-    watch_ext_mask_t watch_exts;
     watch_notification_routine_t notification_routine;
     void *parameter;
 };
 
-void make_watch_dir_context(Watch_Dir_Context *context);
-
-void watch_dir_thread_worker(PVOID param);
+bool make_watch_context(Watch_Context *context, void *parameter = nullptr, const wchar_t *target_dir = nullptr, watch_notification_routine_t notification_routine = nullptr);
+DWORD watch_context_launch_thread(Watch_Context *context, HANDLE *out_thread_handle = nullptr);
+void watch_thread_worker(PVOID param);
 
 //
 // Assets:
 //
-
-struct Reload_Context {
-    mm::Arena *arena;
-    Bitmap_Picture *picture; //  TODO(gr3yknigh1): Make it generic-asset [2025/03/01]
-    GLuint texture_id;
-    std::atomic_flag should_reload;
-    std::atomic_flag should_reload_gameplay;
-};
 
 struct Gameplay {
     HMODULE module;
@@ -632,6 +655,11 @@ enum struct Asset_Type {
     Count_
 };
 
+enum struct Asset_Store_Place {
+    Folder,
+    ImageFile,
+};
+
 struct Asset_Store {
     static constexpr uint16_t max_asset_count = 1024;
 
@@ -641,9 +669,20 @@ struct Asset_Store {
     // TODO(gr3yknigh1): Add support for using `store image-file` (single file) [2025/03/06]
     // TODO(gr3yknigh1): Support for utf-8 or wide paths? [2025/03/06]
 
+    Asset_Store_Place place;
+
     union {
         const char *folder;
     } u;
+};
+
+#if !defined(FOR_EACH_ASSET)
+    #define FOR_EACH_ASSET(IT, ASSET_STORE_PTR) \
+        for (Asset *IT = static_cast<Asset *>(mm::first(&(ASSET_STORE_PTR)->asset_pool)); IT != nullptr; IT = static_cast<Asset *>(mm::next(&(ASSET_STORE_PTR)->asset_pool, static_cast<void *>(IT)) ))
+#endif
+
+struct Reload_Context {
+    Asset_Store *store;
 };
 
 struct Buffer_View {
@@ -651,11 +690,6 @@ struct Buffer_View {
     size_t size;
 
     constexpr Buffer_View() : data(nullptr), size(0) {}
-};
-
-struct File_Context {
-    FILE *file;
-    Str8_View path;
 };
 
 enum struct Asset_Location_Type {
@@ -668,33 +702,52 @@ struct Asset_Location {
     Asset_Location_Type type;
 
     union Data {
-        mm::byte all;
+        mm::byte dummy;  // Dummy for zero initialization of union in default constructor
 
-        File_Context file_context;
+        struct {
+            FILE *handle;
+            Str8_View path;
+        } file;
+
         Buffer_View buffer_view;
 
-        constexpr Data() : all(0) {}
+        constexpr Data() : dummy(0) {}
     } u;
 
     constexpr Asset_Location() : type(Asset_Location_Type::None) {}
 };
 
-bool make_asset_store_from_folder(Asset_Store *store, const char *folder_path, bool watch_changes);
+bool make_asset_store_from_folder(Asset_Store *store, const char *folder_path);
+bool asset_store_destroy(Asset_Store *store);
 
 struct Image {
     int width;
     int height;
     Image_Color_Layout layout;
 
+    GLuint slot;
+    GLuint id;
+
     union {
         void *data;
-        Color_BGRA_U8 *pixels;
-    };
+        Color_BGRA_U8 *bgra_u8;
+    } pixels;
+};
+
+enum struct Asset_State {
+    NotLoaded,
+    LoadFailure,
+    Loaded,
+    UnloadFailure,
+    Unloaded
 };
 
 struct Asset {
     Asset_Type type;
     Asset_Location location;
+    Asset_State state;
+
+    std::atomic_flag should_reload;
 
     union {
         Image image;
@@ -702,6 +755,11 @@ struct Asset {
 };
 
 Asset *asset_load_image(Asset_Store *store, const char *file);
+bool asset_from_bitmap_picture(Asset *asset, Bitmap_Picture *picture);
+
+bool asset_reload(Asset_Store *store, Asset *asset);
+bool asset_unload_content(Asset_Store *store, Asset *asset);
+
 
 
 int WINAPI
@@ -840,39 +898,30 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Media:
     //
-
     Asset_Store store;
-    assert(make_asset_store_from_folder(&store, STRINGIFY(GARDEN_ASSET_FOLDER), true));
+    assert(make_asset_store_from_folder(&store, STRINGIFY(GARDEN_ASSET_FOLDER)));
 
     Asset *atlas_asset = asset_load_image(&store, R"(P:\garden\assets\garden_atlas.bmp)");
     assert(atlas_asset);
 
-    mm::Arena asset_arena = mm::make_arena(1024000);
-#if 0
-    Bitmap_Picture atlas_picture;
-    assert(load_bitmap_picture_from_file(&asset_arena, &atlas_picture, STRINGIFY(GARDEN_ASSET_FOLDER) "\\garden_atlas.bmp"));
-#endif
+    /*GLuint atlas_texture = asset_load_image_to_gpu(&store, asset, GL_RGBA8)*/;
+    // Move to separate function call?
+    atlas_asset->u.image.slot = GL_TEXTURE0;
+    glGenTextures(1, &atlas_asset->u.image.id);
 
     //
     // Setup entity atlas:
     //
 
-    glActiveTexture(GL_TEXTURE0);
-
-    GLuint atlas_texture;
-    glGenTextures(1, &atlas_texture);
-    glBindTexture(GL_TEXTURE_2D, atlas_texture);
+    glActiveTexture(atlas_asset->u.image.slot);
+    glBindTexture(GL_TEXTURE_2D, atlas_asset->u.image.id);
 
     gl_make_texture_from_image(
-        atlas_asset->u.image.data, atlas_asset->u.image.width, atlas_asset->u.image.height,
+        atlas_asset->u.image.pixels.data, atlas_asset->u.image.width, atlas_asset->u.image.height,
         atlas_asset->u.image.layout, GL_RGBA8);
 
-    // TODO:
-    /*asset_store_unload(&store, atlas_asset)*/;
-
-#if 0
-    mm::arena_reset(&asset_arena);
-#endif
+    // NOTE: After loading atlas in GPU, we do not need to keep it in RAM.
+    assert(asset_unload_content(&store, atlas_asset));
 
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
@@ -881,60 +930,42 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+    mm::Arena asset_arena = mm::make_arena(1024000);  // @cleanup
+
     //
     // Hot-reload: Setup
     //
-    // TODO(gr3yknigh1): Wrap all string manipulation in more simple utility functions. String_Builder? [2025/03/01]
-    //
-    DWORD image_path_buffer_size = MAX_PATH * sizeof(wchar_t);
-    wchar_t *image_path_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, image_path_buffer_size);
-    assert(image_path_buffer);
-
-    DWORD bytes_written = GetModuleFileNameW(nullptr, image_path_buffer, image_path_buffer_size);
-    DWORD last_error = GetLastError();
-    assert(last_error == ERROR_SUCCESS);
-
-    Str16_View image_directory_view;
-    assert(path16_get_parent(image_path_buffer, bytes_written, &image_directory_view));
-
-    wchar_t *image_directory_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, (image_directory_view.length + 1) * sizeof(*image_directory_view.data));
-    assert(image_directory_buffer);
-
-    assert(str16_view_copy_to_nullterminated(image_directory_view, image_directory_buffer, (image_directory_view.length + 1) * sizeof(*image_directory_view.data)));
-    assert(HeapFree(GetProcessHeap(), 0, image_path_buffer));
-
-    Watch_Dir_Context watch_context;
-    make_watch_dir_context(&watch_context);
 
     Reload_Context reload_context;
-    reload_context.texture_id = atlas_texture;
-    reload_context.arena = &asset_arena;
-    // reload_context.picture = &atlas_picture;
+    reload_context.store = &store;
 
-    watch_context.target_dir = image_directory_buffer; // TODO(gr3yknigh1): Do free somewhere [2025/03/01]
-    watch_context.watch_exts = WATCH_EXT_BMP | WATCH_EXT_DLL;
-    watch_context.parameter = &reload_context;
-    watch_context.notification_routine = []( const Str16_View file_name, watch_ext_mask_t ext, File_Action action, void *parameter ) {
-        return;
-        if (action != File_Action::Modified) {
+    Watch_Context watch_context;
+    assert(make_watch_context(&watch_context, &reload_context, LR"(P:\garden)",
+        [](Watch_Context *watch_context, const Str16_View file_name, File_Action action, void *parameter) {
+            if (action != File_Action::Modified) {
+                return;
+            }
+
+            Reload_Context *reload_context = reinterpret_cast<Reload_Context *>(parameter);
+
+            if (reload_context->store->place != Asset_Store_Place::Folder) {
+                return;
+            }
+
+            FOR_EACH_ASSET(it, reload_context->store) {
+                if (it->location.type != Asset_Location_Type::File) {
+                    continue;
+                }
+
+                if (str16_view_is_equals(file_name, it->location.u.file.path)) {
+                    it->should_reload.test_and_set();
+                    break;
+                }
+            }
             return;
-        }
-        Reload_Context *context = (Reload_Context *)parameter;
+        }));
 
-        if (ext == WATCH_EXT_BMP && str16_view_is_equals(file_name, L"assets\\garden_atlas.bmp")) {
-            context->should_reload.test_and_set();
-        }
-
-        if (ext == WATCH_EXT_DLL && str16_view_is_equals(file_name, L"build\\Debug\\garden_gameplay.dll")) {
-            context->should_reload_gameplay.test_and_set();
-        }
-        return;
-    };
-
-    DWORD watch_thread_id = 0;
-    HANDLE watch_thread = CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)watch_dir_thread_worker, &watch_context, 0, &watch_thread_id);
-    assert(watch_thread && watch_thread != INVALID_HANDLE_VALUE);
-    // assert(HeapFree(GetProcessHeap(), 0, image_directory_buffer));
+    assert(watch_context_launch_thread(&watch_context));
 
     //
     // Setup tilemap atlas:
@@ -952,7 +983,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     GLint atlas_texture_uniform_loc = glGetUniformLocation(basic_shader_program, "u_texture");
     assert(atlas_texture_uniform_loc != -1);
 
-    glUniform1ui(atlas_texture_uniform_loc, atlas_texture);
+    glUniform1ui(atlas_texture_uniform_loc, atlas_asset->u.image.id);
 
     //
     // Game mainloop:
@@ -976,8 +1007,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Game_Context *game_context = reinterpret_cast<Game_Context *>(gameplay.on_init(&platform_context));
     gameplay.on_load(&platform_context, game_context);
 
-    // assert(asset_store_destroy(&store));
-
     while (!global_should_terminate) {
         double dt = clock_tick(&clock);
 
@@ -988,12 +1017,14 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         // Game Hot reload:
         //
 
+        #if 0
         if (reload_context.should_reload_gameplay.test()) {
             reload_context.should_reload_gameplay.clear();
             unload_gameplay(&gameplay);
             gameplay = load_gameplay(STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME));
             gameplay.on_load(&platform_context, game_context);
         }
+        #endif
 
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
@@ -1068,28 +1099,36 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
             // Asset Hot reload:
             //
 
-            if (reload_context.should_reload.test()) {
-                reload_context.should_reload.clear();
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, reload_context.texture_id);
+            FOR_EACH_ASSET(it, &store) {
+                if (it->location.type != Asset_Location_Type::File) {
+                    continue;
+                }
 
-                assert(load_bitmap_picture_from_file(reload_context.arena, reload_context.picture, STRINGIFY(GARDEN_ASSET_FOLDER) "\\garden_atlas.bmp"));
+                if (!it->should_reload.test()) {
+                    continue;
+                }
 
-                #if 0
-                gl_make_texture_from_image(
-                    reload_context.picture->u.data, reload_context.picture->dib_header.width, reload_context.picture->dib_header.height,
-                    reload_context.picture->dib_header.compression_method, GL_RGBA8);
-                #endif
+                if (it->type == Asset_Type::Image) {
+                    assert(asset_reload(&store, it));
 
-                mm::arena_reset(reload_context.arena);
+                    glActiveTexture(it->u.image.slot);
+                    glBindTexture(GL_TEXTURE_2D, it->u.image.id);
 
-                glGenerateMipmap(GL_TEXTURE_2D);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+                    gl_make_texture_from_image(it->u.image.pixels.data, it->u.image.width, it->u.image.height, it->u.image.layout, GL_RGBA8);
 
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                    assert(asset_unload_content(&store, it));
+
+                    glGenerateMipmap(GL_TEXTURE_2D);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                }
+
+                it->should_reload.clear();
             }
+
 
         PERF_BLOCK_END(UPDATE);
 
@@ -1135,6 +1174,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     // WaitForSingleObject(watch_thread, INFINITE); // TODO(gr3yknigh1): Wait for thread [2025/02/23]
 
+    assert(asset_store_destroy(&store));
 
 #if defined(GARDEN_USE_CRT_ALLOCATIONS)
     _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_DEBUG);
@@ -2041,8 +2081,7 @@ path16_get_parent(const wchar_t *path, size_t path_length, Str16_View *out)
         wchar_t c = path[index];
 
         if (c == path16_get_separator()) {
-            size_t c_position = path_length - index - 1;
-            out->length = c_position - 1;
+            out->length = index;
             break;
         }
     }
@@ -2058,16 +2097,9 @@ path16_get_separator()
 }
 
 void
-make_watch_dir_context(Watch_Dir_Context *context)
+watch_thread_worker(PVOID param)
 {
-    ZERO_STRUCT(context);
-    context->should_stop.clear();
-}
-
-void
-watch_dir_thread_worker(PVOID param)
-{
-    Watch_Dir_Context *context = (Watch_Dir_Context *)param;
+    Watch_Context *context = (Watch_Context *)param;
 
     HANDLE watch_dir = CreateFileW(context->target_dir,
         FILE_LIST_DIRECTORY, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -2075,10 +2107,22 @@ watch_dir_thread_worker(PVOID param)
     assert(watch_dir && watch_dir != INVALID_HANDLE_VALUE);
 
     DWORD file_notify_info_buffer_size = sizeof(FILE_NOTIFY_INFORMATION) * 1024;
-    FILE_NOTIFY_INFORMATION *file_notify_info = (FILE_NOTIFY_INFORMATION *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, file_notify_info_buffer_size);
+    FILE_NOTIFY_INFORMATION *file_notify_info = static_cast<FILE_NOTIFY_INFORMATION *>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, file_notify_info_buffer_size));
     assert(file_notify_info);
     // TODO(gr3yknigh1): Fix allocation strategy here. Maybe try to
     // iterate in fixed buffer? [2025/03/01]
+
+    // TODO(gr3yknigh1): Replace with String_Builder [2025/03/10]
+    uint64_t target_dir_length = str16_get_length(context->target_dir);
+    size_t target_dir_buffer_size = target_dir_length * sizeof(*context->target_dir);
+    size_t file_full_path_buffer_capacity = (target_dir_length + MAX_PATH) * sizeof(*context->target_dir);
+
+    void *file_full_path_buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, file_full_path_buffer_capacity);
+    assert(file_full_path_buffer && "Buy more RAM");
+
+    // NOTE(gr3yknigh1): Clunky! [2025/03/10]
+    mm::copy_memory(file_full_path_buffer, static_cast<const void *>(context->target_dir), target_dir_buffer_size);
+
 
     while (!context->should_stop.test()) {
         DWORD bytes_returned = 0;
@@ -2087,25 +2131,28 @@ watch_dir_thread_worker(PVOID param)
             FILE_NOTIFY_CHANGE_LAST_WRITE, &bytes_returned, nullptr, nullptr
         ));
 
+        const wchar_t *changed_file_relative_path = file_notify_info->FileName;
+        const uint64_t changed_file_relative_path_length = file_notify_info->FileNameLength / sizeof(*file_notify_info->FileName);
+        const size_t changed_file_relative_path_buffer_size = file_notify_info->FileNameLength;
+
+
         if (context->notification_routine != nullptr) {
-            Str16_View file_name(file_notify_info->FileName, file_notify_info->FileNameLength / sizeof(*file_notify_info->FileName));
+            // TODO(gr3yknigh1): Replace with some kind of Path_Join function [2025/03/10]
+            static_cast<wchar_t *>(file_full_path_buffer)[target_dir_length] = path16_get_separator();
+            size_t separator_size = sizeof(wchar_t);
+            mm::copy_memory( static_cast<mm::byte *>(file_full_path_buffer) + target_dir_buffer_size + separator_size, static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
 
-            watch_ext_mask_t file_ext = 0;
+            Str16_View file_name(static_cast<wchar_t *>(file_full_path_buffer), target_dir_length + 1 + changed_file_relative_path_length);
+            //                                                                                    ^^^
+            // WARN(gr3yknigh1): BECAUSE WE INSERTED SEPARATOR BEFORE!!! [2025/03/10]
+            // Move it to Path_Join as soon as possible
+            //
 
-            if        (HAS_FLAG(context->watch_exts, WATCH_EXT_BMP)  && str16_view_endswith(file_name, WATCH_EXT_BMP_VIEW)) {
-                file_ext = WATCH_EXT_BMP;
-            } else if (HAS_FLAG(context->watch_exts, WATCH_EXT_GLSL) && str16_view_endswith(file_name, WATCH_EXT_GLSL_VIEW)) {
-                file_ext = WATCH_EXT_GLSL;
-            } else if (HAS_FLAG(context->watch_exts, WATCH_EXT_DLL) && str16_view_endswith(file_name, WATCH_EXT_DLL_VIEW)) {
-                file_ext = WATCH_EXT_DLL;
-            }
-
-            if (file_ext != 0) {
-                context->notification_routine(file_name, file_ext, (File_Action)file_notify_info->Action, context->parameter);
-            }
+            context->notification_routine(context, file_name, (File_Action)file_notify_info->Action, context->parameter);
         }
     }
 
+    assert(HeapFree(GetProcessHeap(), 0, file_full_path_buffer));
     assert(HeapFree(GetProcessHeap(), 0, file_notify_info));
 }
 
@@ -2126,6 +2173,7 @@ gl_die_on_first_error(void)
         ExitProcess(1);
     }
 }
+
 
 
 Gameplay
@@ -2169,12 +2217,13 @@ unload_gameplay(Gameplay *gameplay)
 }
 
 bool
-make_asset_store_from_folder(Asset_Store *store, const char *folder_path, bool watch_changes)
+make_asset_store_from_folder(Asset_Store *store, const char *folder_path)
 {
     assert(store && folder_path);
 
     mm::zero_struct(store);
 
+    store->place = Asset_Store_Place::Folder;
     store->asset_pool = mm::make_block_allocator(Asset_Store::max_asset_count, sizeof(Asset), sizeof(Asset), Asset_Store::max_asset_count);
     store->u.folder = folder_path;
 
@@ -2183,47 +2232,189 @@ make_asset_store_from_folder(Asset_Store *store, const char *folder_path, bool w
     return true;
 }
 
+bool
+asset_store_destroy(Asset_Store *store)
+{
+    assert(store);
+
+    assert(mm::destroy_block_allocator(&store->asset_pool));
+    assert(mm::destroy_block_allocator(&store->asset_content));
+
+    mm::zero_struct(store);
+
+    return true;
+}
+
 Asset *
 asset_load_image(Asset_Store *store, const char *file)
 {
+    // TODO(gr3yknigh1): Handle errors and mark asset as failed to load: Asset_State::LoadFailure [2025/03/10]
+
     assert(store && file);
 
-    Asset_Location location;
-    location.type = Asset_Location_Type::File;
-    location.u.file_context.path = file /*asset_store_resolve_file(file)*/;
-    location.u.file_context.file = fopen(location.u.file_context.path.data, "r");
-    assert(location.u.file_context.file);
+    auto *asset = mm::allocate_struct<Asset>(&store->asset_pool);
+    assert(asset);
+
+    asset->type = Asset_Type::Image;
+    asset->location.type = Asset_Location_Type::File;
+    asset->location.u.file.path = file /*asset_store_resolve_file(file)*/;
+    asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
+    assert(asset->location.u.file.handle);
 
     // NOTE(gr3yknigh1): Assume that file is path to BMP image [2025/03/10]
 
     Bitmap_Picture picture;
-    assert(load_bitmap_picture_info_from_file(&picture, location.u.file_context.file));
+    assert(load_bitmap_picture_info_from_file(&picture, asset->location.u.file.handle));
 
     //
     // TODO(gr3yknigh1): Allocate less data, because file_size includes size of metadata [2025/03/10]
     //
     picture.u.data = mm::allocate(&store->asset_content, picture.header.file_size);
-    assert(load_bitmap_picture_pixel_data_from_file(&picture, location.u.file_context.file));
+    assert(load_bitmap_picture_pixel_data_from_file(&picture, asset->location.u.file.handle));
 
+    assert(asset_from_bitmap_picture(asset, &picture));
+
+    asset->state = Asset_State::Loaded;
+
+    fclose(asset->location.u.file.handle);
+    asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
+
+    return asset;
+}
+
+bool
+asset_reload(Asset_Store *store, Asset *asset)
+{
+    assert(store && asset);
+
+    assert(asset->state == Asset_State::Unloaded);
+
+    if (asset->location.type == Asset_Location_Type::File) {
+        if (asset->location.u.file.handle == nullptr) {
+            // TODO(gr3yknigh1): Wrap fopen in function which accepts Str8_View-s [2025/03/10]
+            asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
+            assert(asset->location.u.file.handle);
+        }
+
+        if (asset->type == Asset_Type::Image) {
+            Bitmap_Picture picture;
+            assert(load_bitmap_picture_info_from_file(&picture, asset->location.u.file.handle));
+
+            //
+            // TODO(gr3yknigh1): Allocate less data, because file_size includes size of metadata [2025/03/10]
+            //
+            picture.u.data = mm::allocate(&store->asset_content, picture.header.file_size);
+            assert(load_bitmap_picture_pixel_data_from_file(&picture, asset->location.u.file.handle));
+
+            assert(asset_from_bitmap_picture(asset, &picture));
+
+            asset->state = Asset_State::Loaded;
+        }
+
+        if (asset->location.u.file.handle != nullptr) {
+            fclose(asset->location.u.file.handle);
+            asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
+        }
+    }
+
+    return true;
+}
+
+bool
+asset_from_bitmap_picture(Asset *asset, Bitmap_Picture *picture)
+{
     //
     // Copy image data to more generalized structure
     //
-    auto *asset = mm::allocate_struct<Asset>(&store->asset_pool);
-    assert(asset);
-
-    asset->type = Asset_Type::Image;
-    asset->location = location;
-
-    asset->u.image.width = picture.dib_header.width;
-    asset->u.image.height = picture.dib_header.height;
+    asset->u.image.width = picture->dib_header.width;
+    asset->u.image.height = picture->dib_header.height;
 
     asset->u.image.layout = Image_Color_Layout::Nothing;
-    if (picture.dib_header.compression_method ==  Bitmap_Picture_Compression_Method::Bitfields) {
+    if (picture->dib_header.compression_method ==  Bitmap_Picture_Compression_Method::Bitfields) {
         asset->u.image.layout = Image_Color_Layout::BGRA_U8;
     }
     assert(asset->u.image.layout != Image_Color_Layout::Nothing);
 
-    asset->u.image.data = picture.u.data;
+    asset->u.image.pixels.data = picture->u.data;
 
-    return asset;
+    return true;
+}
+
+
+bool
+asset_unload_content(Asset_Store *store, Asset *asset)
+{
+    assert(store && asset);
+
+    assert(asset->state == Asset_State::Loaded);
+
+    bool result = true;
+
+    if (asset->type == Asset_Type::Image) {
+        result = mm::reset( &store->asset_content, asset->u.image.pixels.data );
+    } else {
+        result = false;
+    }
+
+    if (result) {
+        asset->state = Asset_State::Unloaded;
+    } else {
+        asset->state = Asset_State::UnloadFailure;
+    }
+
+    return result;
+}
+
+bool make_watch_context(Watch_Context *context, void *parameter, const wchar_t *target_dir, watch_notification_routine_t notification_routine)
+{
+    assert(context);
+
+    mm::zero_struct(context);
+
+    context->should_stop.clear();
+
+    if (!target_dir) {
+
+        //
+        // TODO(gr3yknigh1): Wrap all string manipulation in more simple utility functions. String_Builder? [2025/03/01]
+        //
+
+        DWORD image_path_buffer_size = MAX_PATH * sizeof(wchar_t);
+        wchar_t *image_path_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, image_path_buffer_size);
+        assert(image_path_buffer);
+
+        DWORD bytes_written = GetModuleFileNameW(nullptr, image_path_buffer, image_path_buffer_size);
+        DWORD last_error = GetLastError();
+        assert(last_error == ERROR_SUCCESS);
+
+        Str16_View image_directory_view;
+        assert(path16_get_parent(image_path_buffer, bytes_written, &image_directory_view));
+
+        wchar_t *image_directory_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, (image_directory_view.length + 1) * sizeof(*image_directory_view.data));
+        assert(image_directory_buffer);
+
+        assert(str16_view_copy_to_nullterminated(image_directory_view, image_directory_buffer, (image_directory_view.length + 1) * sizeof(*image_directory_view.data)));
+        assert(HeapFree(GetProcessHeap(), 0, image_path_buffer));
+
+        target_dir = image_directory_buffer;
+    }
+
+    context->target_dir = target_dir;  // TODO(gr3yknigh1): Do free somewhere [2025/03/01]
+    context->parameter = parameter;
+    context->notification_routine = notification_routine;
+
+    return true;
+}
+
+DWORD
+watch_context_launch_thread(Watch_Context *context, PHANDLE out_thread_handle)
+{
+    DWORD watch_thread_id = 0;
+    HANDLE watch_thread = CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)watch_thread_worker, context, 0, &watch_thread_id);
+    assert(watch_thread && watch_thread != INVALID_HANDLE_VALUE);
+
+    if (out_thread_handle != nullptr) {
+        *out_thread_handle = watch_thread;
+    }
+    return watch_thread_id;
 }
