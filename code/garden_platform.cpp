@@ -347,7 +347,12 @@ mm::allocate(mm::Block_Allocator *allocator, size_t size)
     mm::Block *new_block = mm::allocate_struct<mm::Block>();
     mm::zero_struct(new_block);
 
-    allocator->blocks.tail->next = new_block;
+    if (allocator->blocks.count > 0) {
+        allocator->blocks.tail->next = new_block;
+    } else {
+        allocator->blocks.head = new_block;
+    }
+
     allocator->blocks.tail = new_block;
     allocator->blocks.count++;
 
@@ -363,7 +368,7 @@ mm::allocate(mm::Block_Allocator *allocator, size_t size)
 
 
 bool
-mm::deallocate(mm::Block_Allocator *allocator)
+mm::destroy_block_allocator(mm::Block_Allocator *allocator)
 {
     assert(allocator);
 

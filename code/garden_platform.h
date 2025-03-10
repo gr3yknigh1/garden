@@ -185,7 +185,14 @@ namespace mm
 
     void *allocate(Block_Allocator *allocator, size_t size);
 
-    bool deallocate(Block_Allocator *allocator);
+    template <typename Ty>
+    inline Ty *
+    allocate_struct(Block_Allocator *allocator)
+    {
+        return static_cast<Ty *>(mm::allocate(allocator, sizeof(Ty)));
+    }
+
+    bool destroy_block_allocator(Block_Allocator *allocator);
 
 } // namespace mm
 

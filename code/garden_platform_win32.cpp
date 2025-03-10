@@ -63,19 +63,19 @@ str8_get_length(const char *s) noexcept
     return result;
 }
 
-struct Str8_View8 {
+struct Str8_View {
     const char *data;
     size_t length;
 
-    constexpr Str8_View8() noexcept : data(nullptr), length(0) {}
-    constexpr Str8_View8(const char *data_) noexcept : data(data_), length(str8_get_length(data_)) {}
-    constexpr Str8_View8(const char *data_, size_t length_) noexcept : data(data_), length(length_) {}
+    constexpr inline Str8_View() noexcept : data(nullptr), length(0) {}
+    constexpr inline Str8_View(const char *data_) noexcept : data(data_), length(str8_get_length(data_)) {}
+    constexpr inline Str8_View(const char *data_, size_t length_) noexcept : data(data_), length(length_) {}
 };
 
-inline Str8_View8
+inline Str8_View
 str8_view_capture_until(const char **cursor, char until)
 {
-    Str8_View8 sv;
+    Str8_View sv;
 
     sv.data = *cursor;
 
@@ -89,7 +89,7 @@ str8_view_capture_until(const char **cursor, char until)
 }
 
 inline bool
-str8_view_copy_to_nullterminated(Str8_View8 sv, char *out_buffer, size_t out_buffer_size)
+str8_view_copy_to_nullterminated(Str8_View sv, char *out_buffer, size_t out_buffer_size)
 {
     if (sv.length + 1 > out_buffer_size) {
         return false;
@@ -101,7 +101,7 @@ str8_view_copy_to_nullterminated(Str8_View8 sv, char *out_buffer, size_t out_buf
 }
 
 constexpr bool
-str8_view_is_equals(Str8_View8 a, Str8_View8 b)
+str8_view_is_equals(Str8_View a, Str8_View b)
 {
     if (a.length != b.length) {
         return false;
@@ -118,9 +118,9 @@ str8_view_is_equals(Str8_View8 a, Str8_View8 b)
 }
 
 constexpr bool
-str8_view_is_equals(Str8_View8 a, const char *str)
+str8_view_is_equals(Str8_View a, const char *str)
 {
-    Str8_View8 b(str);
+    Str8_View b(str);
     return str8_view_is_equals(a, b);
 }
 
@@ -513,12 +513,27 @@ struct Bitmap_Picture {
 #pragma pack(pop)
 
 bool load_bitmap_picture_from_file(mm::Arena *arena, Bitmap_Picture *picture, const char *file_path);
+bool load_bitmap_picture_from_file(mm::Arena *arena, Bitmap_Picture *picture, FILE *file);
+
+bool load_bitmap_picture_info_from_file(Bitmap_Picture *picture, FILE *file);
+bool load_bitmap_picture_pixel_data_from_file(Bitmap_Picture *picture, FILE *file);
+
+
+//
+// Media:
+//
+
+enum struct Image_Color_Layout {
+    Nothing,
+    BGRA_U8,
+};
+
 
 //
 // @pre
 //   - Bind target texture with glBindTexture(GL_TEXTURE_2D, ...);
 //
-void gl_make_texture_from_bitmap_picture(void *data, size32_t width, size32_t height, Bitmap_Picture_Compression_Method compression_method, GLenum internal_format);
+void gl_make_texture_from_image(void *data, size32_t width, size32_t height, Image_Color_Layout layout, GLenum internal_format);
 
 
 void gl_clear_all_errors();
@@ -612,34 +627,35 @@ struct Gameplay {
 Gameplay load_gameplay(const char *module_path);
 void unload_gameplay(Gameplay *gameplay);
 
-#if 0
-struct Asset_Node {
-    Asset_Node *next;
-    Asset_Node *prev;
-
-    Asset *asset;
-};
-
 enum struct Asset_Type {
     Image,
     Count_
 };
 
 struct Asset_Store {
-    Pool_Allocator pools[Asset_Type::Count_];
+    static constexpr uint16_t max_asset_count = 1024;
 
-    struct {
-        Asset_Node *head;
-        Asset_Node *tail;
-        uint64_t    count;
-    } assets;
+    mm::Block_Allocator asset_pool;
+    mm::Block_Allocator asset_content;
 
-    // TODO(gr3yknigh1): Add support for using `store image` (single file) [2025/03/06]
+    // TODO(gr3yknigh1): Add support for using `store image-file` (single file) [2025/03/06]
     // TODO(gr3yknigh1): Support for utf-8 or wide paths? [2025/03/06]
 
     union {
         const char *folder;
     } u;
+};
+
+struct Buffer_View {
+    mm::byte *data;
+    size_t size;
+
+    constexpr Buffer_View() : data(nullptr), size(0) {}
+};
+
+struct File_Context {
+    FILE *file;
+    Str8_View path;
 };
 
 enum struct Asset_Location_Type {
@@ -651,50 +667,42 @@ enum struct Asset_Location_Type {
 struct Asset_Location {
     Asset_Location_Type type;
 
-    union {
-        const char *path;
-        /* Buffer_View buffer_view; */
+    union Data {
+        mm::byte all;
+
+        File_Context file_context;
+        Buffer_View buffer_view;
+
+        constexpr Data() : all(0) {}
     } u;
+
+    constexpr Asset_Location() : type(Asset_Location_Type::None) {}
 };
 
 bool make_asset_store_from_folder(Asset_Store *store, const char *folder_path, bool watch_changes);
 
-enum struct Asset_Type {
-    Nothing,
-    Image,
+struct Image {
+    int width;
+    int height;
+    Image_Color_Layout layout;
 
-    Count_
-};
-
-enum struct Image_Color_Layout {
-    BGRA_U8;
-};
-
-enum struct Asset_State {
-    NotReady,
-    Ready,
+    union {
+        void *data;
+        Color_BGRA_U8 *pixels;
+    };
 };
 
 struct Asset {
     Asset_Type type;
-    Asset_State state;
     Asset_Location location;
 
-    std::atomic_flag should_reload;
-
     union {
-        struct {
-            int width;
-            int height;
-            Image_Color_Layout layout;
-            Color_BGRA_U8 *pixels;
-        } image;
+        Image image;
     } u;
 };
 
 Asset *asset_load_image(Asset_Store *store, const char *file);
 
-#endif
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -833,9 +841,17 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     // Media:
     //
 
+    Asset_Store store;
+    assert(make_asset_store_from_folder(&store, STRINGIFY(GARDEN_ASSET_FOLDER), true));
+
+    Asset *atlas_asset = asset_load_image(&store, R"(P:\garden\assets\garden_atlas.bmp)");
+    assert(atlas_asset);
+
     mm::Arena asset_arena = mm::make_arena(1024000);
+#if 0
     Bitmap_Picture atlas_picture;
     assert(load_bitmap_picture_from_file(&asset_arena, &atlas_picture, STRINGIFY(GARDEN_ASSET_FOLDER) "\\garden_atlas.bmp"));
+#endif
 
     //
     // Setup entity atlas:
@@ -847,11 +863,16 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glGenTextures(1, &atlas_texture);
     glBindTexture(GL_TEXTURE_2D, atlas_texture);
 
-    gl_make_texture_from_bitmap_picture(
-        atlas_picture.u.data, atlas_picture.dib_header.width, atlas_picture.dib_header.height,
-        atlas_picture.dib_header.compression_method, GL_RGBA8);
+    gl_make_texture_from_image(
+        atlas_asset->u.image.data, atlas_asset->u.image.width, atlas_asset->u.image.height,
+        atlas_asset->u.image.layout, GL_RGBA8);
 
+    // TODO:
+    /*asset_store_unload(&store, atlas_asset)*/;
+
+#if 0
     mm::arena_reset(&asset_arena);
+#endif
 
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
@@ -888,12 +909,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Reload_Context reload_context;
     reload_context.texture_id = atlas_texture;
     reload_context.arena = &asset_arena;
-    reload_context.picture = &atlas_picture;
+    // reload_context.picture = &atlas_picture;
 
     watch_context.target_dir = image_directory_buffer; // TODO(gr3yknigh1): Do free somewhere [2025/03/01]
     watch_context.watch_exts = WATCH_EXT_BMP | WATCH_EXT_DLL;
     watch_context.parameter = &reload_context;
     watch_context.notification_routine = []( const Str16_View file_name, watch_ext_mask_t ext, File_Action action, void *parameter ) {
+        return;
         if (action != File_Action::Modified) {
             return;
         }
@@ -954,21 +976,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Game_Context *game_context = reinterpret_cast<Game_Context *>(gameplay.on_init(&platform_context));
     gameplay.on_load(&platform_context, game_context);
 
-    #if 0
-
-    Asset_Store store;
-    assert(make_asset_store_from_folder(&store, STRINGIFY(GARDEN_ASSET_FOLDER), true));
-    assert(asset_store_allocate_pools(&store));
-
-    Asset *atlas_texture = asset_load_image(&store, "garden_atlas.bmp");
-    asset(atlas_texture);
-    #endif
-
-    auto allocator = mm::make_block_allocator(1, 1024);
-    void *p = mm::allocate(&allocator, 1024);
-    mm::zero_memory(p, 1024);
-
-    mm::deallocate(&allocator);
+    // assert(asset_store_destroy(&store));
 
     while (!global_should_terminate) {
         double dt = clock_tick(&clock);
@@ -1067,9 +1075,11 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
                 assert(load_bitmap_picture_from_file(reload_context.arena, reload_context.picture, STRINGIFY(GARDEN_ASSET_FOLDER) "\\garden_atlas.bmp"));
 
-                gl_make_texture_from_bitmap_picture(
+                #if 0
+                gl_make_texture_from_image(
                     reload_context.picture->u.data, reload_context.picture->dib_header.width, reload_context.picture->dib_header.height,
                     reload_context.picture->dib_header.compression_method, GL_RGBA8);
+                #endif
 
                 mm::arena_reset(reload_context.arena);
 
@@ -1616,31 +1626,62 @@ load_bitmap_picture_from_file(mm::Arena *arena, Bitmap_Picture *picture, const c
         return false;
     }
 
-    fread(&picture->header, sizeof(picture->header), 1, file);
-    fread(&picture->dib_header, sizeof(picture->dib_header), 1, file);
+    bool result = load_bitmap_picture_from_file(arena, picture, file);
+
+    fclose(file);
+
+    return result;
+}
+
+bool
+load_bitmap_picture_from_file(mm::Arena *arena, Bitmap_Picture *picture, FILE *file)
+{
+    if (!load_bitmap_picture_info_from_file(picture, file)) {
+        return false;
+    }
 
     picture->u.data = mm::arena_alloc_zero(arena, picture->header.file_size, ARENA_ALLOC_BASIC);
     if (picture->u.data == nullptr) {
         return false;
     }
 
-    fseek(file, picture->header.data_offset, SEEK_SET);
-    fread(picture->u.data, picture->header.file_size, 1, file);
-    fseek(file, 0, SEEK_SET);
-
-    fclose(file);
+    if (!load_bitmap_picture_pixel_data_from_file(picture, file)) {
+        return false;
+    }
 
     return true;
 }
 
-void
-gl_make_texture_from_bitmap_picture(void *data, size32_t width, size32_t height, Bitmap_Picture_Compression_Method compression_method, GLenum internal_format)
+bool
+load_bitmap_picture_info_from_file(Bitmap_Picture *picture, FILE *file)
 {
-    assert(compression_method == Bitmap_Picture_Compression_Method::Bitfields);
+    // TODO(gr3yknigh1): Make sure that SEEK_SET is in position [2025/03/10]
+    fread(&picture->header, sizeof(picture->header), 1, file);
+    fread(&picture->dib_header, sizeof(picture->dib_header), 1, file);
+
+    // TODO(gr3yknigh1): Handle read errors [2025/03/10]
+    return true;
+}
+
+bool
+load_bitmap_picture_pixel_data_from_file(Bitmap_Picture *picture, FILE *file)
+{
+    fseek(file, picture->header.data_offset, SEEK_SET);
+    fread(picture->u.data, picture->header.file_size, 1, file);
+    fseek(file, 0, SEEK_SET);
+
+    // TODO(gr3yknigh1): Handle read errors [2025/03/10]
+    return true;
+}
+
+void
+gl_make_texture_from_image(void *data, size32_t width, size32_t height, Image_Color_Layout layout, GLenum internal_format)
+{
+    assert(layout == Image_Color_Layout::BGRA_U8);
 
     GLenum format = 0, type = 0;
 
-    if (compression_method == Bitmap_Picture_Compression_Method::Bitfields) {
+    if (layout == Image_Color_Layout::BGRA_U8) {
         format = GL_BGRA;
         type = GL_UNSIGNED_BYTE;
     }
@@ -1664,16 +1705,16 @@ Lexer MakeLexer(char *buffer, size_t buffer_size);
 void Lexer_Advance(Lexer *lexer, int32_t count = 1);
 
 char     Lexer_Peek(Lexer *lexer, int32_t offset);
-Str8_View8 Lexer_PeekView(Lexer *lexer, int32_t offset);
+Str8_View Lexer_PeekView(Lexer *lexer, int32_t offset);
 
 bool     Lexer_CheckPeeked(Lexer *lexer, const char *s);
-bool     Lexer_CheckPeeked(Lexer *lexer, Str8_View8 s);
+bool     Lexer_CheckPeeked(Lexer *lexer, Str8_View s);
 
 bool     Lexer_ParseInt(Lexer *lexer, int *result);
-bool     Lexer_ParseStrToView(Lexer *lexer, Str8_View8 *sv);
+bool     Lexer_ParseStrToView(Lexer *lexer, Str8_View *sv);
 
-Str8_View8 Lexer_SkipUntil     (Lexer *lexer, char c);
-Str8_View8 Lexer_SkipUntilEndline(Lexer *lexer);
+Str8_View Lexer_SkipUntil     (Lexer *lexer, char c);
+Str8_View Lexer_SkipUntilEndline(Lexer *lexer);
 void     Lexer_SkipWhitespace(Lexer *lexer);
 
 bool Lexer_IsEndline(Lexer *lexer, bool *is_crlf = nullptr);
@@ -1708,11 +1749,11 @@ load_tilemap_from_file(mm::Arena *arena, const char *file_path)
 
     Lexer lexer = MakeLexer(file_buffer, file_size);
 
-    static constexpr Str8_View8 s_tilemap_directive = "@tilemap";
+    static constexpr Str8_View s_tilemap_directive = "@tilemap";
 
-    static constexpr Str8_View8 s_tilemap_image_bmp_format = "bmp";
+    static constexpr Str8_View s_tilemap_image_bmp_format = "bmp";
 
-    Str8_View8 tilemap_image_path_view;
+    Str8_View tilemap_image_path_view;
 
     while (!Lexer_IsEnd(&lexer)) {
         Lexer_SkipWhitespace(&lexer);
@@ -1850,7 +1891,7 @@ Lexer_Peek(Lexer *lexer, int32_t offset)
     return 0;
 }
 
-Str8_View8
+Str8_View
 Lexer_PeekView(Lexer *lexer, int32_t offset)
 {
     size_t cursor_index = lexer->cursor - lexer->buffer;
@@ -1858,32 +1899,32 @@ Lexer_PeekView(Lexer *lexer, int32_t offset)
     // TODO(gr3yknigh1): Maybe make it signed? [2025/02/23]
     if (cursor_index + offset < lexer->buffer_size) {
         if (offset < 0) {
-            return Str8_View8(lexer->cursor + offset, -offset);
+            return Str8_View(lexer->cursor + offset, -offset);
         } else if (offset > 0) {
-            return Str8_View8(lexer->cursor, offset);
+            return Str8_View(lexer->cursor, offset);
         }
     }
-    return Str8_View8();  // do a better job next time
+    return Str8_View();  // do a better job next time
 }
 
 bool
 Lexer_CheckPeeked(Lexer *lexer, const char *s)
 {
-    Str8_View8 sv(s);
+    Str8_View sv(s);
     return Lexer_CheckPeeked(lexer, sv);
 }
 
 bool
-Lexer_CheckPeeked(Lexer *lexer, Str8_View8 s)
+Lexer_CheckPeeked(Lexer *lexer, Str8_View s)
 {
-    Str8_View8 peek_view = Lexer_PeekView(lexer, (int32_t)s.length);
+    Str8_View peek_view = Lexer_PeekView(lexer, (int32_t)s.length);
     return str8_view_is_equals(peek_view, s);
 }
 
-Str8_View8
+Str8_View
 Lexer_SkipUntil(Lexer *lexer, char c)
 {
-    Str8_View8 ret;
+    Str8_View ret;
 
     ret.data = lexer->cursor;
 
@@ -1895,10 +1936,10 @@ Lexer_SkipUntil(Lexer *lexer, char c)
     return ret;
 }
 
-Str8_View8
+Str8_View
 Lexer_SkipUntilEndline(Lexer *lexer)
 {
-    Str8_View8 ret;
+    Str8_View ret;
 
     ret.data = lexer->cursor;
 
@@ -1973,7 +2014,7 @@ Lexer_ParseInt(Lexer *lexer, int *result)
 }
 
 bool
-Lexer_ParseStrToView(Lexer *lexer, Str8_View8 *sv)
+Lexer_ParseStrToView(Lexer *lexer, Str8_View *sv)
 {
     if (lexer->lexeme != '"') {
         return false;
@@ -2125,4 +2166,64 @@ void
 unload_gameplay(Gameplay *gameplay)
 {
     assert(FreeLibrary(gameplay->module));
+}
+
+bool
+make_asset_store_from_folder(Asset_Store *store, const char *folder_path, bool watch_changes)
+{
+    assert(store && folder_path);
+
+    mm::zero_struct(store);
+
+    store->asset_pool = mm::make_block_allocator(Asset_Store::max_asset_count, sizeof(Asset), sizeof(Asset), Asset_Store::max_asset_count);
+    store->u.folder = folder_path;
+
+    store->asset_content = mm::make_block_allocator();
+
+    return true;
+}
+
+Asset *
+asset_load_image(Asset_Store *store, const char *file)
+{
+    assert(store && file);
+
+    Asset_Location location;
+    location.type = Asset_Location_Type::File;
+    location.u.file_context.path = file /*asset_store_resolve_file(file)*/;
+    location.u.file_context.file = fopen(location.u.file_context.path.data, "r");
+    assert(location.u.file_context.file);
+
+    // NOTE(gr3yknigh1): Assume that file is path to BMP image [2025/03/10]
+
+    Bitmap_Picture picture;
+    assert(load_bitmap_picture_info_from_file(&picture, location.u.file_context.file));
+
+    //
+    // TODO(gr3yknigh1): Allocate less data, because file_size includes size of metadata [2025/03/10]
+    //
+    picture.u.data = mm::allocate(&store->asset_content, picture.header.file_size);
+    assert(load_bitmap_picture_pixel_data_from_file(&picture, location.u.file_context.file));
+
+    //
+    // Copy image data to more generalized structure
+    //
+    auto *asset = mm::allocate_struct<Asset>(&store->asset_pool);
+    assert(asset);
+
+    asset->type = Asset_Type::Image;
+    asset->location = location;
+
+    asset->u.image.width = picture.dib_header.width;
+    asset->u.image.height = picture.dib_header.height;
+
+    asset->u.image.layout = Image_Color_Layout::Nothing;
+    if (picture.dib_header.compression_method ==  Bitmap_Picture_Compression_Method::Bitfields) {
+        asset->u.image.layout = Image_Color_Layout::BGRA_U8;
+    }
+    assert(asset->u.image.layout != Image_Color_Layout::Nothing);
+
+    asset->u.image.data = picture.u.data;
+
+    return asset;
 }
