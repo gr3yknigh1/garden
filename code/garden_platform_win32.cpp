@@ -177,7 +177,6 @@ str16_view_endswith(Str16_View view, Str16_View end) noexcept
     return true;
 }
 
-
 constexpr bool
 str16_view_is_equals(Str16_View a, Str16_View b) noexcept
 {
@@ -683,6 +682,11 @@ struct Asset_Store {
 
 struct Reload_Context {
     Asset_Store *store;
+
+    //
+    // NOTE(gr3yknigh1): Found no place for this. Think about it later, if it becomes a problem [2025/03/10]
+    //
+    std::atomic_flag should_reload_gameplay;
 };
 
 struct Buffer_View {
@@ -938,6 +942,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     Reload_Context reload_context;
     reload_context.store = &store;
+    reload_context.should_reload_gameplay.clear();
 
     Watch_Context watch_context;
     assert(make_watch_context(&watch_context, &reload_context, LR"(P:\garden)",
@@ -962,7 +967,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                     break;
                 }
             }
-            return;
+
+            // if (str16_view_endswith(file_name, STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME))) {
+            //     reload_context
+            // }
         }));
 
     assert(watch_context_launch_thread(&watch_context));

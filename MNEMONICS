@@ -1,0 +1,31 @@
+
+This is local mnemonic naming conventions. Better to be readed before any
+code will be read or written.
+
+  - "mm::size", "size_t" types, "*_size" variable -- only for size-related stuff. Used to describe: offsets in bytes or sizes in bytes.
+
+  - For counting stuff use only unsigned integeres, or for describing invalid state, signed integers. No size_t.
+
+Example:
+
+struct Str8_View {
+    char *data;          // "hello world"
+    uint64_t length;     //  11
+};
+
+struct Str16_View {
+    wchar_t *data;       // L"hello world"
+    uint64_t length;     // 11               <- Same as in `Str8_View`, for example
+};
+
+struct Buffer_View {
+    mm::byte *data;      // L"hello world"  <- For example, buffer_view will point to previous Str16_View and will cover all memory, which is reserved for string content.
+    uint64_t size;       // 22              <- Because single letter of string is 2 byte long.
+};
+
+  * size != length
+
+Initialization and deinitialization:
+
+  * "make_*" functions might allocate. Should be mentioned in documention.
+  * "*_destroy" functions never call free on original pointer, passed to cleanup. It only deinitializes content for structs.
