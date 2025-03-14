@@ -117,6 +117,7 @@ def quote_path(s: str) -> str:
     s = s.replace("'", '"')
     return s
 
+
 @task(default=True)
 def build(c, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False, enable_crt_alloc=False):
     """Builds entire project.

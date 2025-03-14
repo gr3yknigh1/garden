@@ -177,6 +177,29 @@ str16_view_endswith(Str16_View view, Str16_View end) noexcept
     return true;
 }
 
+inline bool
+str16_view_endswith(Str16_View view, Str8_View end) noexcept
+{
+    if (view.length < end.length) {
+        return false;
+    }
+
+    for (size_t end_index = end.length - 1, view_index = view.length - 1; end_index > 0; --end_index, --view_index) {
+
+        const char *c16 = reinterpret_cast<const char *>(view.data + view_index);
+
+        if (end.data[end_index] != c16[0]) {
+            return false;
+        }
+
+        if (c16[1] != 0) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 constexpr bool
 str16_view_is_equals(Str16_View a, Str16_View b) noexcept
 {
@@ -968,9 +991,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 }
             }
 
-            // if (str16_view_endswith(file_name, STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME))) {
-            //     reload_context
-            // }
+            if (str16_view_endswith(file_name, STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME))) {
+                reload_context->should_reload_gameplay.test_and_set();
+            }
         }));
 
     assert(watch_context_launch_thread(&watch_context));
@@ -1025,14 +1048,12 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         // Game Hot reload:
         //
 
-        #if 0
         if (reload_context.should_reload_gameplay.test()) {
             reload_context.should_reload_gameplay.clear();
             unload_gameplay(&gameplay);
             gameplay = load_gameplay(STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME));
             gameplay.on_load(&platform_context, game_context);
         }
-        #endif
 
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
