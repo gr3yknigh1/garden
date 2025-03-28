@@ -827,6 +827,11 @@ bool asset_from_bitmap_picture(Asset *asset, Bitmap_Picture *picture);
 bool asset_reload(Asset_Store *store, Asset *asset);
 bool asset_unload_content(Asset_Store *store, Asset *asset);
 
+struct Shader_Compile_Result {
+    GLuint shader_program_id;
+};
+
+Shader_Compile_Result compile_shader(char *source_code, size_t file_size);
 
 struct Lexer {
     char *cursor;
@@ -836,6 +841,9 @@ struct Lexer {
     size_t buffer_size;
 };
 
+//!
+//! @todo Make buffer be const!
+//!
 Lexer make_lexer(char *buffer, size_t buffer_size);
 
 void lexer_advance(Lexer *lexer, int32_t count = 1);
@@ -859,6 +867,8 @@ void      lexer_skip_whitespace(Lexer *lexer);
 bool      lexer_is_endline(Lexer *lexer, bool *is_crlf = nullptr);
 bool      lexer_is_end(Lexer *lexer);
 
+
+static void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -946,34 +956,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
-    mm::Arena shader_compilation_arena = mm::make_arena(1024 * 10);
-
-    GLuint basic_vert_shader = compile_shader_from_file(&shader_compilation_arena, STRINGIFY(GARDEN_ASSET_FOLDER) "\\basic.vert.glsl", GL_VERTEX_SHADER);
-    GLuint basic_frag_shader = compile_shader_from_file(&shader_compilation_arena, STRINGIFY(GARDEN_ASSET_FOLDER) "\\basic.frag.glsl", GL_FRAGMENT_SHADER);
-    GLuint basic_shader_program = link_shader_program(&shader_compilation_arena, basic_vert_shader, basic_frag_shader);
-
-    free_arena(&shader_compilation_arena);
-
-    /* After linking shaders no longer needed. */
-    glDeleteShader(basic_vert_shader);
-    glDeleteShader(basic_frag_shader);
-
-    glUseProgram(basic_shader_program);
-
-    GLint model_uniform_loc = glGetUniformLocation(basic_shader_program, "model");
-    assert(model_uniform_loc != -1);
-
-    GLint projection_uniform_loc = glGetUniformLocation(basic_shader_program, "projection");
-    assert(projection_uniform_loc != -1);
-
-    Camera camera = make_camera(Camera_ViewMode::Orthogonal);
-
-    glm::mat4 model = glm::identity<glm::mat4>();
-    glm::mat4 projection = camera_get_projection_matrix(&camera, window_width, window_height);
-
-    glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
-
     GLuint vertex_array = 0;
     glGenVertexArrays(1, &vertex_array);
     glBindVertexArray(vertex_array);
@@ -1001,8 +983,27 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Asset_Store store;
     assert(make_asset_store_from_folder(&store, STRINGIFY(GARDEN_ASSET_FOLDER)));
 
+    Asset *basic_shader_asset = asset_load_shader(&store, R"(P:\garden\assets\basic.sl)");
+    assert(basic_shader_asset);
 
-    Asset *basic_shader = asset_load_shader(&store, R"(P:\garden\assets\basic.sl)");
+    Shader *basic_shader = &basic_shader_asset->u.shader;
+
+    glUseProgram(basic_shader->program_id);
+
+    GLint model_uniform_loc = glGetUniformLocation(basic_shader->program_id, "model");
+    assert(model_uniform_loc != -1);
+
+    GLint projection_uniform_loc = glGetUniformLocation(basic_shader->program_id, "projection");
+    assert(projection_uniform_loc != -1);
+
+    Camera camera = make_camera(Camera_ViewMode::Orthogonal);
+
+    glm::mat4 model = glm::identity<glm::mat4>();
+    glm::mat4 projection = camera_get_projection_matrix(&camera, window_width, window_height);
+
+    glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
+
 
     Asset *atlas_asset = asset_load_image(&store, R"(P:\garden\assets\garden_atlas.bmp)");
     assert(atlas_asset);
@@ -1030,7 +1031,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     // NOTE: After loading atlas in GPU, we do not need to keep it in RAM.
     assert(asset_unload_content(&store, atlas_asset));
 
-    GLint atlas_texture_uniform_loc = glGetUniformLocation(basic_shader_program, "u_texture");
+    GLint atlas_texture_uniform_loc = glGetUniformLocation(basic_shader->program_id, "u_texture");
     assert(atlas_texture_uniform_loc != -1);
 
     glUniform1ui(atlas_texture_uniform_loc, atlas_asset->u.image.id);
@@ -1046,33 +1047,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     reload_context.should_reload_gameplay.clear();
 
     Watch_Context watch_context;
-    assert(make_watch_context(&watch_context, &reload_context, LR"(P:\garden)",
-        [](Watch_Context *watch_context, const Str16_View file_name, File_Action action, void *parameter) {
-            if (action != File_Action::Modified) {
-                return;
-            }
-
-            Reload_Context *reload_context = reinterpret_cast<Reload_Context *>(parameter);
-
-            if (reload_context->store->place != Asset_Store_Place::Folder) {
-                return;
-            }
-
-            FOR_EACH_ASSET(it, reload_context->store) {
-                if (it->location.type != Asset_Location_Type::File) {
-                    continue;
-                }
-
-                if (str16_view_is_equals(file_name, it->location.u.file.path)) {
-                    it->should_reload.test_and_set();
-                    break;
-                }
-            }
-
-            if (str16_view_endswith(file_name, STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME))) {
-                reload_context->should_reload_gameplay.test_and_set();
-            }
-        }));
+    assert(make_watch_context(&watch_context, &reload_context, LR"(P:\garden)", asset_watch_routine));
 
     assert(watch_context_launch_thread(&watch_context));
 
@@ -1212,9 +1187,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                     continue;
                 }
 
-                if (it->type == Asset_Type::Image) {
-                    assert(asset_reload(&store, it));
+                assert(asset_reload(&store, it));
 
+                if (it->type == Asset_Type::Image) {
                     glActiveTexture(it->u.image.slot);
                     glBindTexture(GL_TEXTURE_2D, it->u.image.id);
 
@@ -1230,6 +1205,29 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                }
+
+                if (it->type == Asset_Type::Shader) {
+                    Shader *shader = &it->u.shader;
+
+                    glUseProgram(shader->program_id);
+
+                    model_uniform_loc = glGetUniformLocation(shader->program_id, "model");
+                    assert(model_uniform_loc != -1);
+
+                    projection_uniform_loc = glGetUniformLocation(shader->program_id, "projection");
+                    assert(projection_uniform_loc != -1);
+
+                    model = glm::identity<glm::mat4>();
+                    projection = camera_get_projection_matrix(&camera, window_width, window_height);
+
+                    glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
+                    glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
+
+                    atlas_texture_uniform_loc = glGetUniformLocation(shader->program_id, "u_texture");
+                    assert(atlas_texture_uniform_loc != -1);
+
+                    glUniform1ui(atlas_texture_uniform_loc, atlas_asset->u.image.id);
                 }
 
                 it->should_reload.clear();
@@ -1268,7 +1266,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     unload_gameplay(&gameplay);
 
-    glDeleteProgram(basic_shader_program);
+    glDeleteProgram(basic_shader->program_id); // @cleanup Replace with asset_shader_free
 
     free_arena(&asset_arena);
     free_arena(&page_arena);
@@ -2509,78 +2507,20 @@ asset_load_shader(Asset_Store *store, const char *file)
 
     fread(asset->u.shader.source_code, asset->location.u.file.size, 1, asset->location.u.file.handle);
 
-    //
-    // TODO(gr3yknigh1): Extract this program into special shader compiler routine [2025/03/28]
-    //
-
-    Lexer lexer = make_lexer(asset->u.shader.source_code, asset->location.u.file.size);
-
-    constexpr static Str8_View s_line_comment = "//";
-    constexpr static Str8_View s_begin_directive = "#begin";
-    constexpr static Str8_View s_vertex_literal = "vertex";
-    constexpr static Str8_View s_fragment_literal = "fragment";
-
-    Str8_View vertex_source{};
-    Str8_View fragment_source{};
-
-    while (!lexer_is_end(&lexer)) {
-        lexer_skip_whitespace(&lexer);
-
-        // NOTE(gr3yknigh1): Skipping comments [2025/02/24]
-        // TODO(gr3yknigh1): Skip /**/ comments [2025/03/19]
-        if (lexer_check_peeked(&lexer, s_line_comment)) {
-            lexer_skip_until_endline(&lexer);
-            continue;
-        }
-
-        if (lexer_check_peeked_and_advance(&lexer, s_begin_directive)) {
-            lexer_skip_whitespace(&lexer); // NOTE: Skipping spaces
-
-            if (lexer_check_peeked_and_advance(&lexer, s_vertex_literal)) {
-                assert(vertex_source.empty());
-                lexer_skip_whitespace(&lexer);
-
-                vertex_source = lexer_skip_until(&lexer, s_begin_directive);
-                continue;
-            }  else if (lexer_check_peeked_and_advance(&lexer, s_fragment_literal)) {
-                assert(fragment_source.empty());
-                lexer_skip_whitespace(&lexer);
-
-                fragment_source = lexer_skip_until(&lexer, s_begin_directive);
-                continue;
-            }
-        }
-
-        lexer_advance(&lexer);
-    }
-
-    assert(!vertex_source.empty() && !fragment_source.empty());
-
-    Shader_Module *vertex_module = &asset->u.shader.modules[static_cast<int>(Shader_Module_Type::Vertex)];
-    Shader_Module *fragment_module = &asset->u.shader.modules[static_cast<int>(Shader_Module_Type::Fragment)];
-
-    // TODO(gr3yknigh1): Move to arena [2025/03/28]
-    char *vertex_source_buffer = static_cast<char *>(mm::allocate(vertex_source.length + 1));
-    mm::zero_memory(vertex_source_buffer, vertex_source.length + 1);
-    assert(str8_view_copy_to_nullterminated(vertex_source, vertex_source_buffer, vertex_source.length + 1));
-    vertex_module->id = compile_shader_from_str8(vertex_source_buffer, Shader_Module_Type::Vertex);
-    assert(vertex_module->id);
-    mm::deallocate(vertex_source_buffer);
-
-    // TODO(gr3yknigh1): Move to arena [2025/03/28]
-    char *fragment_source_buffer = static_cast<char *>(mm::allocate(fragment_source.length + 1));
-    mm::zero_memory(fragment_source_buffer, fragment_source.length + 1);
-    assert(str8_view_copy_to_nullterminated(fragment_source, fragment_source_buffer, fragment_source.length + 1));
-    fragment_module->id = compile_shader_from_str8(fragment_source_buffer, Shader_Module_Type::Fragment);
-    assert(fragment_module->id);
-    mm::deallocate(fragment_source_buffer);
-
-    asset->u.shader.program_id = link_shader_program(vertex_module->id, fragment_module->id);
+    Shader_Compile_Result result = compile_shader(asset->u.shader.source_code, asset->location.u.file.size);
+    asset->u.shader.program_id = result.shader_program_id;
     assert(asset->u.shader.program_id);
 
     //
     // TODO(gr3yknigh1): Delete shader modules. They are no longer needed. [2025/03/28]
     //
+
+    #if 0
+    /* After linking shaders no longer needed. */
+    glDeleteShader(vertex_module->id);
+    glDeleteShader(fragment_module->id);
+    #endif
+
 
     fclose(asset->location.u.file.handle);
     asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
@@ -2593,12 +2533,15 @@ asset_reload(Asset_Store *store, Asset *asset)
 {
     assert(store && asset);
 
-    assert(asset->state == Asset_State::Unloaded);
+    if (asset->state == Asset_State::Loaded) {
+        assert(asset_unload_content(store, asset));
+    }
 
     if (asset->location.type == Asset_Location_Type::File) {
         if (asset->location.u.file.handle == nullptr) {
             // TODO(gr3yknigh1): Wrap fopen in function which accepts Str8_View-s [2025/03/10]
             asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
+            asset->location.u.file.size = get_file_size(asset->location.u.file.handle);
             assert(asset->location.u.file.handle);
         }
 
@@ -2613,8 +2556,19 @@ asset_reload(Asset_Store *store, Asset *asset)
             assert(load_bitmap_picture_pixel_data_from_file(&picture, asset->location.u.file.handle));
 
             assert(asset_from_bitmap_picture(asset, &picture));
+        }
 
-            asset->state = Asset_State::Loaded;
+        if (asset->type == Asset_Type::Shader) {
+
+            asset->u.shader.source_code = static_cast<char *>(mm::allocate(&store->asset_content, asset->location.u.file.size));
+            mm::zero_memory(asset->u.shader.source_code, asset->location.u.file.size);
+            fread(asset->u.shader.source_code, asset->location.u.file.size, 1, asset->location.u.file.handle);
+
+            Shader_Compile_Result result = compile_shader(asset->u.shader.source_code, asset->location.u.file.size);
+
+            glDeleteProgram(asset->u.shader.program_id); // @cleanup
+            asset->u.shader.program_id = result.shader_program_id;
+            assert(asset->u.shader.program_id);
         }
 
         if (asset->location.u.file.handle != nullptr) {
@@ -2623,6 +2577,7 @@ asset_reload(Asset_Store *store, Asset *asset)
         }
     }
 
+    asset->state = Asset_State::Loaded;
     return true;
 }
 
@@ -2657,7 +2612,9 @@ asset_unload_content(Asset_Store *store, Asset *asset)
     bool result = true;
 
     if (asset->type == Asset_Type::Image) {
-        result = mm::reset( &store->asset_content, asset->u.image.pixels.data );
+        result = mm::reset(&store->asset_content, asset->u.image.pixels.data );
+    } else if (asset->type == Asset_Type::Shader) {
+        result = mm::reset(&store->asset_content, asset->u.shader.source_code);
     } else {
         result = false;
     }
@@ -2723,4 +2680,100 @@ watch_context_launch_thread(Watch_Context *context, PHANDLE out_thread_handle)
         *out_thread_handle = watch_thread;
     }
     return watch_thread_id;
+}
+
+static void
+asset_watch_routine([[maybe_unused]] Watch_Context *watch_context, const Str16_View file_name, File_Action action, void *parameter)
+{
+    if (action != File_Action::Modified) {
+        return;
+    }
+
+    Reload_Context *reload_context = reinterpret_cast<Reload_Context *>(parameter);
+
+    if (reload_context->store->place != Asset_Store_Place::Folder) {
+        return;
+    }
+
+    FOR_EACH_ASSET(it, reload_context->store) {
+        if (it->location.type != Asset_Location_Type::File) {
+            continue;
+        }
+
+        if (str16_view_is_equals(file_name, it->location.u.file.path)) {
+            it->should_reload.test_and_set();
+            break;
+        }
+    }
+
+    if (str16_view_endswith(file_name, STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME))) {
+        reload_context->should_reload_gameplay.test_and_set();
+    }
+}
+
+Shader_Compile_Result
+compile_shader(char *source_code, size_t file_size)
+{
+    Lexer lexer = make_lexer(source_code, file_size);
+
+    constexpr static Str8_View s_line_comment = "//";
+    constexpr static Str8_View s_begin_directive = "#begin";
+    constexpr static Str8_View s_vertex_literal = "vertex";
+    constexpr static Str8_View s_fragment_literal = "fragment";
+
+    Str8_View vertex_source{};
+    Str8_View fragment_source{};
+
+    while (!lexer_is_end(&lexer)) {
+        lexer_skip_whitespace(&lexer);
+
+        // NOTE(gr3yknigh1): Skipping comments [2025/02/24]
+        // TODO(gr3yknigh1): Skip /**/ comments [2025/03/19]
+        if (lexer_check_peeked(&lexer, s_line_comment)) {
+            lexer_skip_until_endline(&lexer);
+            continue;
+        }
+
+        if (lexer_check_peeked_and_advance(&lexer, s_begin_directive)) {
+            lexer_skip_whitespace(&lexer); // NOTE: Skipping spaces
+
+            if (lexer_check_peeked_and_advance(&lexer, s_vertex_literal)) {
+                assert(vertex_source.empty());
+                lexer_skip_whitespace(&lexer);
+
+                vertex_source = lexer_skip_until(&lexer, s_begin_directive);
+                continue;
+            }  else if (lexer_check_peeked_and_advance(&lexer, s_fragment_literal)) {
+                assert(fragment_source.empty());
+                lexer_skip_whitespace(&lexer);
+
+                fragment_source = lexer_skip_until(&lexer, s_begin_directive);
+                continue;
+            }
+        }
+
+        lexer_advance(&lexer);
+    }
+
+    assert(!vertex_source.empty() && !fragment_source.empty());
+
+    // TODO(gr3yknigh1): Move to arena [2025/03/28]
+    char *vertex_source_buffer = static_cast<char *>(mm::allocate(vertex_source.length + 1));
+    mm::zero_memory(vertex_source_buffer, vertex_source.length + 1);
+    assert(str8_view_copy_to_nullterminated(vertex_source, vertex_source_buffer, vertex_source.length + 1));
+    GLuint vertex_module_id = compile_shader_from_str8(vertex_source_buffer, Shader_Module_Type::Vertex);
+    assert(vertex_module_id);
+    mm::deallocate(vertex_source_buffer);
+
+    // TODO(gr3yknigh1): Move to arena [2025/03/28]
+    char *fragment_source_buffer = static_cast<char *>(mm::allocate(fragment_source.length + 1));
+    mm::zero_memory(fragment_source_buffer, fragment_source.length + 1);
+    assert(str8_view_copy_to_nullterminated(fragment_source, fragment_source_buffer, fragment_source.length + 1));
+    GLuint fragment_module_id = compile_shader_from_str8(fragment_source_buffer, Shader_Module_Type::Fragment);
+    assert(fragment_module_id);
+    mm::deallocate(fragment_source_buffer);
+
+    Shader_Compile_Result result{};
+    result.shader_program_id = link_shader_program(vertex_module_id, fragment_module_id);
+    return result;
 }
