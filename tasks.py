@@ -50,10 +50,9 @@ glm_library: F[[str], str] = lambda build_type: join(glm_output_dir(build_type),
 #
 
 @define_task()
-def build(c, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False, enable_crt_alloc=False):
+def build(c: Context, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False, enable_crt_alloc=False):
     """Builds entire project.
     """
-
     if clean:
         if c.exists(glm_output_dir(build_type)):
             c.run(f"rmdir /S /Q {glm_output_dir(build_type)}")
