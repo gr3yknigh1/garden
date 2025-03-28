@@ -67,6 +67,8 @@ struct Str8_View {
     const char *data;
     size_t length;
 
+    constexpr inline bool empty(void) const noexcept { return this->length == 0; }
+
     constexpr inline Str8_View() noexcept : data(nullptr), length(0) {}
     constexpr inline Str8_View(const char *data_) noexcept : data(data_), length(str8_get_length(data_)) {}
     constexpr inline Str8_View(const char *data_, size_t length_) noexcept : data(data_), length(length_) {}
@@ -146,7 +148,6 @@ struct Str16_View {
     constexpr Str16_View(const wchar_t *data_, size_t length_) noexcept : data(data_), length(length_) {}
 };
 
-
 inline bool
 str16_view_copy_to_nullterminated(Str16_View view, wchar_t *out_buffer, size_t out_buffer_size) noexcept
 {
@@ -217,7 +218,6 @@ str16_view_is_equals(Str16_View a, Str16_View b) noexcept
     return true;
 }
 
-
 constexpr bool
 str16_view_is_equals(Str16_View a, const wchar_t *str) noexcept
 {
@@ -286,24 +286,33 @@ void perf_block_record_print(const Perf_Block_Record *record);
 
 #define PERF_BLOCK_RECORD(NAME) NAME##__BLOCK_RECORD
 
-#define PERF_BLOCK_BEGIN(NAME) \
-    Perf_Block_Record PERF_BLOCK_RECORD(NAME); \
-    do { \
-        PERF_BLOCK_RECORD(NAME).label = STRINGIFY(NAME); \
-        PERF_BLOCK_RECORD(NAME).function = __FUNCTION__; \
-        PERF_BLOCK_RECORD(NAME).file_path = __FILE__; \
-        PERF_BLOCK_RECORD(NAME).line_number = __LINE__; \
-        PERF_BLOCK_RECORD(NAME).cycles_begin = perf_get_cycles_count(); \
-        PERF_BLOCK_RECORD(NAME).counter_begin = perf_get_counter(); \
-    } while (0)
+#if defined(PERF_ENABLED)
 
-#define PERF_BLOCK_END(NAME) \
-    do { \
-        PERF_BLOCK_RECORD(NAME).cycles_end = perf_get_cycles_count(); \
-        PERF_BLOCK_RECORD(NAME).counter_end = perf_get_counter(); \
-        perf_block_record_print(&PERF_BLOCK_RECORD(NAME)); \
-    } while (0)
+    #define PERF_BLOCK_BEGIN(NAME) \
+        Perf_Block_Record PERF_BLOCK_RECORD(NAME); \
+        do { \
+            PERF_BLOCK_RECORD(NAME).label = STRINGIFY(NAME); \
+            PERF_BLOCK_RECORD(NAME).function = __FUNCTION__; \
+            PERF_BLOCK_RECORD(NAME).file_path = __FILE__; \
+            PERF_BLOCK_RECORD(NAME).line_number = __LINE__; \
+            PERF_BLOCK_RECORD(NAME).cycles_begin = perf_get_cycles_count(); \
+            PERF_BLOCK_RECORD(NAME).counter_begin = perf_get_counter(); \
+        } while (0)
 
+    #define PERF_BLOCK_END(NAME) \
+        do { \
+            PERF_BLOCK_RECORD(NAME).cycles_end = perf_get_cycles_count(); \
+            PERF_BLOCK_RECORD(NAME).counter_end = perf_get_counter(); \
+            perf_block_record_print(&PERF_BLOCK_RECORD(NAME)); \
+        } while (0)
+
+#else
+
+    #define PERF_BLOCK_BEGIN(NAME)
+
+    #define PERF_BLOCK_END(NAME)
+
+#endif // if defined(PERF_ENABLED)
 
 //
 // WGL: Context initialization.
@@ -404,8 +413,10 @@ glm::mat4 camera_get_projection_matrix(Camera *camera, int viewport_width, int v
 //
 // OpenGL API wrappers
 //
+GLuint compile_shader_from_str8(const char *string, GLenum type);
 GLuint compile_shader_from_str8(mm::Arena *arena, const char *string, GLenum type);
 GLuint compile_shader_from_file(mm::Arena *arena, const char *file_path, GLenum type);
+GLuint link_shader_program(GLuint vertex_shader, GLuint fragment_shader);
 GLuint link_shader_program(mm::Arena *arena, GLuint vertex_shader, GLuint fragment_shader);
 
 struct Vertex_Buffer_Attribute {
@@ -588,8 +599,9 @@ enum struct Image_Color_Layout {
 void gl_make_texture_from_image(void *data, size32_t width, size32_t height, Image_Color_Layout layout, GLenum internal_format);
 
 
-void gl_clear_all_errors();
+void gl_clear_all_errors(void);
 void gl_die_on_first_error(void);
+void gl_print_debug_info(void);
 
 //
 // Tilemaps:
@@ -674,6 +686,7 @@ void unload_gameplay(Gameplay *gameplay);
 
 enum struct Asset_Type {
     Image,
+    Shader,
     Count_
 };
 
@@ -733,6 +746,7 @@ struct Asset_Location {
 
         struct {
             FILE *handle;
+            size_t size;
             Str8_View path;
         } file;
 
@@ -743,6 +757,8 @@ struct Asset_Location {
 
     constexpr Asset_Location() : type(Asset_Location_Type::None) {}
 };
+
+size_t get_file_size(FILE *file);
 
 bool make_asset_store_from_folder(Asset_Store *store, const char *folder_path);
 bool asset_store_destroy(Asset_Store *store);
@@ -769,6 +785,25 @@ enum struct Asset_State {
     Unloaded
 };
 
+
+enum struct Shader_Module_Type {
+    Vertex,
+    Fragment,
+
+    Count_
+};
+
+struct Shader_Module {
+    GLuint id;
+};
+
+struct Shader {
+    GLuint program_id;
+    char *source_code;
+
+    Shader_Module modules[static_cast<size_t>(Shader_Module_Type::Count_)];
+};
+
 struct Asset {
     Asset_Type type;
     Asset_Location location;
@@ -778,15 +813,51 @@ struct Asset {
 
     union {
         Image image;
+        Shader shader;
     } u;
 };
 
 Asset *asset_load_image(Asset_Store *store, const char *file);
+Asset *asset_load_shader(Asset_Store *store, const char *file);
+
+bool shader_bind(Shader *shader);
+
 bool asset_from_bitmap_picture(Asset *asset, Bitmap_Picture *picture);
 
 bool asset_reload(Asset_Store *store, Asset *asset);
 bool asset_unload_content(Asset_Store *store, Asset *asset);
 
+
+struct Lexer {
+    char *cursor;
+    char lexeme;
+
+    char *buffer;
+    size_t buffer_size;
+};
+
+Lexer make_lexer(char *buffer, size_t buffer_size);
+
+void lexer_advance(Lexer *lexer, int32_t count = 1);
+
+char      lexer_peek(Lexer *lexer, int32_t offset);
+Str8_View lexer_peek_view(Lexer *lexer, int32_t offset);
+
+bool      lexer_check_peeked(Lexer *lexer, const char *s);
+bool      lexer_check_peeked(Lexer *lexer, Str8_View sv);
+bool      lexer_check_peeked_and_advance(Lexer *lexer, Str8_View sv);
+
+bool      lexer_parse_int(Lexer *lexer, int *result);
+bool      lexer_parse_str_to_view(Lexer *lexer, Str8_View *sv);
+
+// TODO(gr3yknigh1): Rename lexer_skip_until* to lexer_advance_until* [2025/03/28]
+Str8_View lexer_skip_until(Lexer *lexer, char c);
+Str8_View lexer_skip_until(Lexer *lexer, Str8_View sv);
+Str8_View lexer_skip_until_endline(Lexer *lexer);
+void      lexer_skip_whitespace(Lexer *lexer);
+
+bool      lexer_is_endline(Lexer *lexer, bool *is_crlf = nullptr);
+bool      lexer_is_end(Lexer *lexer);
 
 
 int WINAPI
@@ -868,6 +939,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    gl_print_debug_info();
+
     //
     // Game initalization:
     //
@@ -928,34 +1001,39 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Asset_Store store;
     assert(make_asset_store_from_folder(&store, STRINGIFY(GARDEN_ASSET_FOLDER)));
 
+
+    Asset *basic_shader = asset_load_shader(&store, R"(P:\garden\assets\basic.sl)");
+
     Asset *atlas_asset = asset_load_image(&store, R"(P:\garden\assets\garden_atlas.bmp)");
     assert(atlas_asset);
 
-    /*GLuint atlas_texture = asset_load_image_to_gpu(&store, asset, GL_RGBA8)*/;
+    /* GLuint atlas_texture = asset_load_image_to_gpu(&store, asset, GL_RGBA8) */;
     // Move to separate function call?
     atlas_asset->u.image.slot = GL_TEXTURE0;
+    glActiveTexture(atlas_asset->u.image.slot);
     glGenTextures(1, &atlas_asset->u.image.id);
+    glBindTexture(GL_TEXTURE_2D, atlas_asset->u.image.id);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     //
     // Setup entity atlas:
     //
-
-    glActiveTexture(atlas_asset->u.image.slot);
-    glBindTexture(GL_TEXTURE_2D, atlas_asset->u.image.id);
-
     gl_make_texture_from_image(
         atlas_asset->u.image.pixels.data, atlas_asset->u.image.width, atlas_asset->u.image.height,
         atlas_asset->u.image.layout, GL_RGBA8);
+    glGenerateMipmap(GL_TEXTURE_2D);
 
     // NOTE: After loading atlas in GPU, we do not need to keep it in RAM.
     assert(asset_unload_content(&store, atlas_asset));
 
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+    GLint atlas_texture_uniform_loc = glGetUniformLocation(basic_shader_program, "u_texture");
+    assert(atlas_texture_uniform_loc != -1);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glUniform1ui(atlas_texture_uniform_loc, atlas_asset->u.image.id);
 
     mm::Arena asset_arena = mm::make_arena(1024000);  // @cleanup
 
@@ -1004,17 +1082,14 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     // TODO(gr3yknigh1): Do it later [2025/02/25]
 
+#if 0
     [[maybe_unused]] Tilemap *tilemap = load_tilemap_from_file(&asset_arena, "demo.scene.td");
     glActiveTexture(GL_TEXTURE1);
 
     GLuint tilemap_texture;
     glGenTextures(1, &tilemap_texture);
     glBindTexture(GL_TEXTURE_2D, tilemap_texture);
-
-    GLint atlas_texture_uniform_loc = glGetUniformLocation(basic_shader_program, "u_texture");
-    assert(atlas_texture_uniform_loc != -1);
-
-    glUniform1ui(atlas_texture_uniform_loc, atlas_asset->u.image.id);
+#endif
 
     //
     // Game mainloop:
@@ -1146,6 +1221,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                     gl_make_texture_from_image(it->u.image.pixels.data, it->u.image.width, it->u.image.height, it->u.image.layout, GL_RGBA8);
 
                     assert(asset_unload_content(&store, it));
+
+                    glUniform1ui(atlas_texture_uniform_loc, it->u.image.id);
 
                     glGenerateMipmap(GL_TEXTURE_2D);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
@@ -1363,9 +1440,7 @@ compile_shader_from_file(mm::Arena *arena, const char *file_path, GLenum type)
     FILE *file = fopen(file_path, "r");
     assert(file);
 
-    fseek(file, 0, SEEK_END);
-    size_t file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    size_t file_size = get_file_size(file);
     assert(file_size);
 
     size_t string_buffer_size = file_size + 1;
@@ -1379,6 +1454,54 @@ compile_shader_from_file(mm::Arena *arena, const char *file_path, GLenum type)
     GLuint id = compile_shader_from_str8(arena, string_buffer, type);
 
     assert(arena_pop(arena, string_buffer));
+
+    return id;
+}
+
+GLenum
+gl_convert_shader_module_type_to_gl_enum(Shader_Module_Type type) {
+
+    if (type == Shader_Module_Type::Vertex) {
+        return GL_VERTEX_SHADER;
+    }
+
+    if (type == Shader_Module_Type::Fragment) {
+        return GL_FRAGMENT_SHADER;
+    }
+
+    return 0;
+}
+
+GLuint
+compile_shader_from_str8(const char *string, Shader_Module_Type type)
+{
+    GLenum gl_shader_type = gl_convert_shader_module_type_to_gl_enum(type);
+
+    GLuint id = glCreateShader(gl_shader_type);
+    glShaderSource(id, 1, &string, 0);
+    glCompileShader(id);
+
+    GLint status = GL_TRUE;
+    glGetShaderiv(id, GL_COMPILE_STATUS, &status);
+
+    if (status == GL_FALSE) {
+        //
+        // TODO(gr3yknigh1): Make Shader_Compiler struct with which you should report compile errors [2025/03/28]
+        //
+        GLint log_length = 0;
+        glGetShaderiv(id, GL_INFO_LOG_LENGTH, &log_length);
+        assert(log_length);
+
+        size_t log_buffer_size = log_length + 1;
+        char *log_buffer = static_cast<char *>(mm::allocate(log_buffer_size));
+        assert(log_buffer);
+
+        glGetShaderInfoLog(id, (GLsizei)log_buffer_size, 0, log_buffer);
+
+        assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
+        /* DIE_MF("Failed to compile OpenGL shader! %s", logBuffer); */
+        mm::deallocate(log_buffer);
+    }
 
     return id;
 }
@@ -1407,6 +1530,38 @@ compile_shader_from_str8(mm::Arena *arena, const char *string, GLenum type)
         assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
         /* DIE_MF("Failed to compile OpenGL shader! %s", logBuffer); */
         mm::arena_pop(arena, log_buffer);
+    }
+
+    return id;
+}
+
+GLuint
+link_shader_program(GLuint vertex_shader, GLuint fragment_shader)
+{
+    GLuint id = glCreateProgram();
+
+    glAttachShader(id, vertex_shader);
+    glAttachShader(id, fragment_shader);
+    glLinkProgram(id);
+
+    glValidateProgram(id);
+
+    GLint status = GL_TRUE;
+    glGetProgramiv(id, GL_LINK_STATUS, &status);
+
+    if (status == GL_FALSE) {
+        GLint log_length{0};
+        glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
+
+        size_t log_buffer_size = log_length + 1;
+        char *log_buffer = static_cast<char *>(mm::allocate(log_buffer_size));
+        assert(log_buffer);
+
+        glGetProgramInfoLog(id, (GLsizei)log_buffer_size, NULL, log_buffer);
+
+        assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
+        /* DIE_MF("Failed to link OpenGL program! %s", logBuffer); */
+        mm::deallocate(log_buffer);
     }
 
     return id;
@@ -1761,34 +1916,6 @@ gl_make_texture_from_image(void *data, size32_t width, size32_t height, Image_Co
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, type, data);
 }
 
-struct Lexer {
-    char *cursor;
-    char lexeme;
-
-    char *buffer;
-    size_t buffer_size;
-};
-
-Lexer MakeLexer(char *buffer, size_t buffer_size);
-
-void Lexer_Advance(Lexer *lexer, int32_t count = 1);
-
-char     Lexer_Peek(Lexer *lexer, int32_t offset);
-Str8_View Lexer_PeekView(Lexer *lexer, int32_t offset);
-
-bool     Lexer_CheckPeeked(Lexer *lexer, const char *s);
-bool     Lexer_CheckPeeked(Lexer *lexer, Str8_View s);
-
-bool     Lexer_ParseInt(Lexer *lexer, int *result);
-bool     Lexer_ParseStrToView(Lexer *lexer, Str8_View *sv);
-
-Str8_View Lexer_SkipUntil     (Lexer *lexer, char c);
-Str8_View Lexer_SkipUntilEndline(Lexer *lexer);
-void     Lexer_SkipWhitespace(Lexer *lexer);
-
-bool Lexer_IsEndline(Lexer *lexer, bool *is_crlf = nullptr);
-bool Lexer_IsEnd(Lexer *lexer);
-
 Tilemap *
 load_tilemap_from_file(mm::Arena *arena, const char *file_path)
 {
@@ -1803,9 +1930,7 @@ load_tilemap_from_file(mm::Arena *arena, const char *file_path)
         return nullptr;
     }
 
-    fseek(file, 0, SEEK_END);
-    size_t file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    size_t file_size = get_file_size(file);
     assert(file_size);
 
     mm::Arena file_arena = mm::make_arena(file_size);
@@ -1816,49 +1941,48 @@ load_tilemap_from_file(mm::Arena *arena, const char *file_path)
     fread(file_buffer, file_size, 1, file);
     fclose(file);
 
-    Lexer lexer = MakeLexer(file_buffer, file_size);
+    Lexer lexer = make_lexer(file_buffer, file_size);
 
     static constexpr Str8_View s_tilemap_directive = "@tilemap";
-
     static constexpr Str8_View s_tilemap_image_bmp_format = "bmp";
 
     Str8_View tilemap_image_path_view;
 
-    while (!Lexer_IsEnd(&lexer)) {
-        Lexer_SkipWhitespace(&lexer);
+    while (!lexer_is_end(&lexer)) {
+        lexer_skip_whitespace(&lexer);
 
         // NOTE(gr3yknigh1): Skipping comments [2025/02/24]
-        if (Lexer_CheckPeeked(&lexer, "//")) {
-            (void)Lexer_SkipUntilEndline(&lexer);
+        if (lexer_check_peeked(&lexer, "//")) {
+            lexer_skip_until_endline(&lexer);
             continue;
         }
 
-        if (Lexer_CheckPeeked( &lexer, s_tilemap_directive )) {
+        if (lexer_check_peeked( &lexer, s_tilemap_directive )) {
             // TODO(gr3yknigh1): Fix this cast to signed int [2025/02/24]
-            Lexer_Advance(&lexer, (int32_t)s_tilemap_directive.length);
-            Lexer_SkipWhitespace(&lexer);
+            lexer_advance(&lexer, (int32_t)s_tilemap_directive.length);
+            lexer_skip_whitespace(&lexer);
 
-            assert(Lexer_ParseInt(&lexer, &tilemap->row_count));
-            Lexer_SkipWhitespace(&lexer);
+            assert(lexer_parse_int(&lexer, &tilemap->row_count));
+            lexer_skip_whitespace(&lexer);
 
-            assert(Lexer_ParseInt(&lexer, &tilemap->col_count));
-            Lexer_SkipWhitespace(&lexer);
+            assert(lexer_parse_int(&lexer, &tilemap->col_count));
+            lexer_skip_whitespace(&lexer);
 
-            assert(Lexer_ParseStrToView(&lexer, &tilemap_image_path_view));
-            Lexer_SkipWhitespace(&lexer);
+            assert(lexer_parse_str_to_view(&lexer, &tilemap_image_path_view));
+            lexer_skip_whitespace(&lexer);
 
             // TODO(gr3yknigh1): Add proper error report mechanizm. Error message in window, for example. [2025/02/24]
-            assert(Lexer_CheckPeeked( &lexer, s_tilemap_image_bmp_format ));
+            assert(lexer_check_peeked( &lexer, s_tilemap_image_bmp_format ));
             tilemap->image.format = Tilemap_Image_Format::Bitmap;
-            Lexer_Advance(&lexer, (int32_t)s_tilemap_image_bmp_format.length);
+            lexer_advance(&lexer, (int32_t)s_tilemap_image_bmp_format.length);
 
-            Lexer_SkipWhitespace(&lexer);
+            lexer_skip_whitespace(&lexer);
 
-            assert(Lexer_ParseInt(&lexer, &tilemap->tile_x_pixel_count));
-            Lexer_SkipWhitespace(&lexer);
+            assert(lexer_parse_int(&lexer, &tilemap->tile_x_pixel_count));
+            lexer_skip_whitespace(&lexer);
 
-            assert(Lexer_ParseInt(&lexer, &tilemap->tile_y_pixel_count));
-            Lexer_SkipWhitespace(&lexer);
+            assert(lexer_parse_int(&lexer, &tilemap->tile_y_pixel_count));
+            lexer_skip_whitespace(&lexer);
 
             // NOTE(gr3yknigh1): Bad assumtion [2025/02/24]
             // assert(Lexer_IsEndline(&lexer));
@@ -1881,8 +2005,8 @@ load_tilemap_from_file(mm::Arena *arena, const char *file_path)
                 size_t current_index_index = indexes_cursor - tilemap->indexes;
                 assert(current_index_index + 1 <= tilemap->indexes_count);
 
-                assert(Lexer_ParseInt(&lexer, indexes_cursor));
-                Lexer_SkipWhitespace(&lexer);
+                assert(lexer_parse_int(&lexer, indexes_cursor));
+                lexer_skip_whitespace(&lexer);
 
                 ++indexes_cursor;
             } while(isdigit(lexer.lexeme));
@@ -1891,7 +2015,7 @@ load_tilemap_from_file(mm::Arena *arena, const char *file_path)
             assert(filled_indexes == tilemap->indexes_count);
         }
 
-        Lexer_Advance(&lexer);
+        lexer_advance(&lexer);
     }
 
     tilemap->image.u.bitmap = static_cast<Bitmap_Picture *>(
@@ -1916,7 +2040,7 @@ load_tilemap_from_file(mm::Arena *arena, const char *file_path)
 
 
 Lexer
-MakeLexer(char *buffer, size_t buffer_size)
+make_lexer(char *buffer, size_t buffer_size)
 {
     Lexer lexer;
 
@@ -1930,11 +2054,11 @@ MakeLexer(char *buffer, size_t buffer_size)
 }
 
 void
-Lexer_Advance(Lexer *lexer, int32_t count)
+lexer_advance(Lexer *lexer, int32_t count)
 {
     size_t cursor_index = lexer->cursor - lexer->buffer;
 
-    if (Lexer_IsEnd(lexer) && cursor_index + count < lexer->buffer_size) {
+    if (lexer_is_end(lexer) && cursor_index + count < lexer->buffer_size) {
         return;
     }
 
@@ -1947,7 +2071,7 @@ Lexer_Advance(Lexer *lexer, int32_t count)
 }
 
 char
-Lexer_Peek(Lexer *lexer, int32_t offset)
+lexer_peek(Lexer *lexer, int32_t offset)
 {
     size_t cursor_index = lexer->cursor - lexer->buffer;
 
@@ -1961,7 +2085,7 @@ Lexer_Peek(Lexer *lexer, int32_t offset)
 }
 
 Str8_View
-Lexer_PeekView(Lexer *lexer, int32_t offset)
+lexer_peek_view(Lexer *lexer, int32_t offset)
 {
     size_t cursor_index = lexer->cursor - lexer->buffer;
 
@@ -1973,32 +2097,33 @@ Lexer_PeekView(Lexer *lexer, int32_t offset)
             return Str8_View(lexer->cursor, offset);
         }
     }
+
     return Str8_View();  // do a better job next time
 }
 
 bool
-Lexer_CheckPeeked(Lexer *lexer, const char *s)
+lexer_check_peeked(Lexer *lexer, const char *s)
 {
-    Str8_View sv(s);
-    return Lexer_CheckPeeked(lexer, sv);
+    Str8_View sv{s};
+    return lexer_check_peeked(lexer, sv);
 }
 
 bool
-Lexer_CheckPeeked(Lexer *lexer, Str8_View s)
+lexer_check_peeked(Lexer *lexer, Str8_View sv)
 {
-    Str8_View peek_view = Lexer_PeekView(lexer, (int32_t)s.length);
-    return str8_view_is_equals(peek_view, s);
+    Str8_View peek_view{lexer_peek_view(lexer, static_cast<int32_t>(sv.length))};
+    return str8_view_is_equals(peek_view, sv);
 }
 
 Str8_View
-Lexer_SkipUntil(Lexer *lexer, char c)
+lexer_skip_until(Lexer *lexer, char c)
 {
-    Str8_View ret;
+    Str8_View ret{};
 
     ret.data = lexer->cursor;
 
-    while (!Lexer_IsEnd(lexer) && lexer->lexeme != c) {
-        Lexer_Advance(lexer);
+    while (!lexer_is_end(lexer) && lexer->lexeme != c) {
+        lexer_advance(lexer);
         ret.length++;
     }
 
@@ -2006,7 +2131,27 @@ Lexer_SkipUntil(Lexer *lexer, char c)
 }
 
 Str8_View
-Lexer_SkipUntilEndline(Lexer *lexer)
+lexer_skip_until(Lexer *lexer, Str8_View sv)
+{
+    Str8_View ret{};
+
+    if (sv.empty()) {
+        return ret;
+    }
+
+    ret.data = lexer->cursor;
+
+    while (!lexer_is_end(lexer) && !lexer_check_peeked(lexer, sv)) {
+        lexer_advance(lexer);
+        ret.length++;
+    }
+
+    return ret;
+}
+
+
+Str8_View
+lexer_skip_until_endline(Lexer *lexer)
 {
     Str8_View ret;
 
@@ -2014,23 +2159,23 @@ Lexer_SkipUntilEndline(Lexer *lexer)
 
     bool is_crlf = false;
 
-    while (!Lexer_IsEnd(lexer) && !Lexer_IsEndline(lexer, &is_crlf)) {
-        Lexer_Advance(lexer);
+    while (!lexer_is_end(lexer) && !lexer_is_endline(lexer, &is_crlf)) {
+        lexer_advance(lexer);
         ret.length++;
     }
 
     if (is_crlf) {
-        Lexer_Advance(lexer);
-        Lexer_Advance(lexer);
+        lexer_advance(lexer);
+        lexer_advance(lexer);
     } else {
-        Lexer_Advance(lexer);
+        lexer_advance(lexer);
     }
 
     return ret;
 }
 
 bool
-Lexer_IsEndline(Lexer *lexer, bool *is_crlf)
+lexer_is_endline(Lexer *lexer, bool *is_crlf)
 {
     if (is_crlf != nullptr) {
         *is_crlf = (lexer->cursor[0] == '\r' && lexer->cursor[1] == '\n');
@@ -2039,15 +2184,15 @@ Lexer_IsEndline(Lexer *lexer, bool *is_crlf)
 }
 
 void
-Lexer_SkipWhitespace(Lexer *lexer)
+lexer_skip_whitespace(Lexer *lexer)
 {
-    while (!Lexer_IsEnd(lexer) && isspace(lexer->lexeme)) {
-        Lexer_Advance(lexer);
+    while (!lexer_is_end(lexer) && isspace(lexer->lexeme)) {
+        lexer_advance(lexer);
     }
 }
 
 bool
-Lexer_IsEnd(Lexer *lexer)
+lexer_is_end(Lexer *lexer)
 {
     size_t cursor_index = lexer->cursor - lexer->buffer;
     return cursor_index >= lexer->buffer_size;
@@ -2055,7 +2200,7 @@ Lexer_IsEnd(Lexer *lexer)
 
 
 bool
-Lexer_ParseInt(Lexer *lexer, int *result)
+lexer_parse_int(Lexer *lexer, int *result)
 {
     // TODO(gr3yknigh1): Error handling [2025/02/23]
 
@@ -2065,12 +2210,12 @@ Lexer_ParseInt(Lexer *lexer, int *result)
 
     if (lexer->lexeme == '-') {
         is_negative = true;
-        Lexer_Advance(lexer);
+        lexer_advance(lexer);
     }
 
     while (lexer->lexeme && (lexer->lexeme >= '0' && lexer->lexeme <= '9')) {
         num = num * 10 + (lexer->lexeme - '0');
-        Lexer_Advance(lexer);
+        lexer_advance(lexer);
     }
 
     if (is_negative) {
@@ -2083,21 +2228,31 @@ Lexer_ParseInt(Lexer *lexer, int *result)
 }
 
 bool
-Lexer_ParseStrToView(Lexer *lexer, Str8_View *sv)
+lexer_parse_str_to_view(Lexer *lexer, Str8_View *sv)
 {
     if (lexer->lexeme != '"') {
         return false;
     }
 
     // NOTE(gr3yknigh1): Skipping '"' [2025/02/24]
-    Lexer_Advance(lexer); // TODO(gr3yknigh1): Wrap in `Lexer_AdvanceIf(Lexer *, int32_t count, char c)`
+    lexer_advance(lexer); // TODO(gr3yknigh1): Wrap in `Lexer_AdvanceIf(Lexer *, int32_t count, char c)`
 
-    *sv = Lexer_SkipUntil(lexer, '"');
+    *sv = lexer_skip_until(lexer, '"');
 
     // NOTE(gr3yknigh1): Skipping '"' [2025/02/24]
-    Lexer_Advance(lexer); // TODO(gr3yknigh1): Wrap in `Lexer_AdvanceIf(Lexer *, int32_t count, char c)`
+    lexer_advance(lexer); // TODO(gr3yknigh1): Wrap in `lexer_advance_if(Lexer *, int32_t count, char c)`
 
     return true;
+}
+
+bool
+lexer_check_peeked_and_advance(Lexer *lexer, Str8_View sv)
+{
+    if (lexer_check_peeked(lexer, sv)) {
+        lexer_advance(lexer, sv.length); // @cleanup
+        return true;
+    }
+    return false;
 }
 
 bool
@@ -2203,7 +2358,16 @@ gl_die_on_first_error(void)
     }
 }
 
+void
+gl_print_debug_info(void)
+{
+    const char *vendor = reinterpret_cast<const char *>(glGetString(GL_VENDOR));
+    const char *renderer = reinterpret_cast<const char *>(glGetString(GL_RENDERER));
+    const char *version = reinterpret_cast<const char *>(glGetString(GL_VERSION));
+    const char *shading_language_version = reinterpret_cast<const char *>(glGetString(GL_SHADING_LANGUAGE_VERSION));
 
+    printf("Graphics info: %s (Vendor %s) \nOpenGL %s, GLSL %s\n", renderer, vendor, version, shading_language_version);
+}
 
 Gameplay
 load_gameplay(const char *module_path)
@@ -2243,6 +2407,19 @@ void
 unload_gameplay(Gameplay *gameplay)
 {
     assert(FreeLibrary(gameplay->module));
+}
+
+size_t
+get_file_size(FILE *file)
+{
+    assert(file);
+
+    fseek(file, 0, SEEK_END);
+    size_t file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    assert(file_size);
+
+    return file_size;
 }
 
 bool
@@ -2288,6 +2465,7 @@ asset_load_image(Asset_Store *store, const char *file)
     asset->location.type = Asset_Location_Type::File;
     asset->location.u.file.path = file /*asset_store_resolve_file(file)*/;
     asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
+    asset->location.u.file.size = get_file_size(asset->location.u.file.handle);
     assert(asset->location.u.file.handle);
 
     // NOTE(gr3yknigh1): Assume that file is path to BMP image [2025/03/10]
@@ -2308,6 +2486,105 @@ asset_load_image(Asset_Store *store, const char *file)
     fclose(asset->location.u.file.handle);
     asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
 
+    return asset;
+}
+
+Asset *
+asset_load_shader(Asset_Store *store, const char *file)
+{
+    assert(store && file);
+
+    auto *asset = mm::allocate_struct<Asset>(&store->asset_pool);
+    assert(asset);
+
+    asset->type = Asset_Type::Shader;
+    asset->location.type = Asset_Location_Type::File;
+    asset->location.u.file.path = file /*asset_store_resolve_file(file)*/;
+    asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
+    asset->location.u.file.size = get_file_size(asset->location.u.file.handle);
+    assert(asset->location.u.file.handle);
+
+    asset->u.shader.source_code = static_cast<char *>(mm::allocate(&store->asset_content, asset->location.u.file.size));
+    mm::zero_memory(asset->u.shader.source_code, asset->location.u.file.size);
+
+    fread(asset->u.shader.source_code, asset->location.u.file.size, 1, asset->location.u.file.handle);
+
+    //
+    // TODO(gr3yknigh1): Extract this program into special shader compiler routine [2025/03/28]
+    //
+
+    Lexer lexer = make_lexer(asset->u.shader.source_code, asset->location.u.file.size);
+
+    constexpr static Str8_View s_line_comment = "//";
+    constexpr static Str8_View s_begin_directive = "#begin";
+    constexpr static Str8_View s_vertex_literal = "vertex";
+    constexpr static Str8_View s_fragment_literal = "fragment";
+
+    Str8_View vertex_source{};
+    Str8_View fragment_source{};
+
+    while (!lexer_is_end(&lexer)) {
+        lexer_skip_whitespace(&lexer);
+
+        // NOTE(gr3yknigh1): Skipping comments [2025/02/24]
+        // TODO(gr3yknigh1): Skip /**/ comments [2025/03/19]
+        if (lexer_check_peeked(&lexer, s_line_comment)) {
+            lexer_skip_until_endline(&lexer);
+            continue;
+        }
+
+        if (lexer_check_peeked_and_advance(&lexer, s_begin_directive)) {
+            lexer_skip_whitespace(&lexer); // NOTE: Skipping spaces
+
+            if (lexer_check_peeked_and_advance(&lexer, s_vertex_literal)) {
+                assert(vertex_source.empty());
+                lexer_skip_whitespace(&lexer);
+
+                vertex_source = lexer_skip_until(&lexer, s_begin_directive);
+                continue;
+            }  else if (lexer_check_peeked_and_advance(&lexer, s_fragment_literal)) {
+                assert(fragment_source.empty());
+                lexer_skip_whitespace(&lexer);
+
+                fragment_source = lexer_skip_until(&lexer, s_begin_directive);
+                continue;
+            }
+        }
+
+        lexer_advance(&lexer);
+    }
+
+    assert(!vertex_source.empty() && !fragment_source.empty());
+
+    Shader_Module *vertex_module = &asset->u.shader.modules[static_cast<int>(Shader_Module_Type::Vertex)];
+    Shader_Module *fragment_module = &asset->u.shader.modules[static_cast<int>(Shader_Module_Type::Fragment)];
+
+    // TODO(gr3yknigh1): Move to arena [2025/03/28]
+    char *vertex_source_buffer = static_cast<char *>(mm::allocate(vertex_source.length + 1));
+    mm::zero_memory(vertex_source_buffer, vertex_source.length + 1);
+    assert(str8_view_copy_to_nullterminated(vertex_source, vertex_source_buffer, vertex_source.length + 1));
+    vertex_module->id = compile_shader_from_str8(vertex_source_buffer, Shader_Module_Type::Vertex);
+    assert(vertex_module->id);
+    mm::deallocate(vertex_source_buffer);
+
+    // TODO(gr3yknigh1): Move to arena [2025/03/28]
+    char *fragment_source_buffer = static_cast<char *>(mm::allocate(fragment_source.length + 1));
+    mm::zero_memory(fragment_source_buffer, fragment_source.length + 1);
+    assert(str8_view_copy_to_nullterminated(fragment_source, fragment_source_buffer, fragment_source.length + 1));
+    fragment_module->id = compile_shader_from_str8(fragment_source_buffer, Shader_Module_Type::Fragment);
+    assert(fragment_module->id);
+    mm::deallocate(fragment_source_buffer);
+
+    asset->u.shader.program_id = link_shader_program(vertex_module->id, fragment_module->id);
+    assert(asset->u.shader.program_id);
+
+    //
+    // TODO(gr3yknigh1): Delete shader modules. They are no longer needed. [2025/03/28]
+    //
+
+    fclose(asset->location.u.file.handle);
+    asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
+    asset->state = Asset_State::Loaded;
     return asset;
 }
 
