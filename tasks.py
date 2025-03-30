@@ -100,6 +100,12 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
         GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
     )
 
+    if build_type == "Debug":
+        common_defines["GARDEN_BUILD_TYPE_DEBUG"] = 1
+
+    if build_type == "Release":
+        common_defines["GARDEN_BUILD_TYPE_RELEASE"] = 1
+
     if enable_crt_alloc:
         common_defines.update(**dict(GARDEN_USE_CRT_ALLOCATIONS=1))
 

@@ -611,6 +611,8 @@ enum struct Tilemap_Image_Format {
     Bitmap,
 };
 
+struct Asset;
+
 struct Tilemap {
     // TODO(gr3yknigh1): Implement uint parsing [2025/02/23]
 
@@ -626,7 +628,7 @@ struct Tilemap {
     struct {
         Tilemap_Image_Format format;
         union {
-            Bitmap_Picture *bitmap;
+            Asset *asset;
         } u;
     } image;
 };
@@ -687,6 +689,7 @@ void unload_gameplay(Gameplay *gameplay);
 enum struct Asset_Type {
     Image,
     Shader,
+    Tilemap,
     Count_
 };
 
@@ -814,11 +817,16 @@ struct Asset {
     union {
         Image image;
         Shader shader;
+        Tilemap tilemap;
     } u;
 };
 
 Asset *asset_load_image(Asset_Store *store, const char *file);
 Asset *asset_load_shader(Asset_Store *store, const char *file);
+Asset *asset_load_tilemap(Asset_Store *store, const char *file);
+
+// helper
+bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, Tilemap *tilemap);
 
 bool shader_bind(Shader *shader);
 
@@ -1004,7 +1012,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
 
-
     Asset *atlas_asset = asset_load_image(&store, R"(P:\garden\assets\garden_atlas.bmp)");
     assert(atlas_asset);
 
@@ -1019,10 +1026,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    //
-    // Setup entity atlas:
-    //
     gl_make_texture_from_image(
         atlas_asset->u.image.pixels.data, atlas_asset->u.image.width, atlas_asset->u.image.height,
         atlas_asset->u.image.layout, GL_RGBA8);
@@ -1055,16 +1058,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     // Setup tilemap atlas:
     //
 
-    // TODO(gr3yknigh1): Do it later [2025/02/25]
-
-#if 0
-    [[maybe_unused]] Tilemap *tilemap = load_tilemap_from_file(&asset_arena, "demo.scene.td");
-    glActiveTexture(GL_TEXTURE1);
-
-    GLuint tilemap_texture;
-    glGenTextures(1, &tilemap_texture);
-    glBindTexture(GL_TEXTURE_2D, tilemap_texture);
-#endif
+    Asset *tilemap_asset = asset_load_tilemap(&store, R"(P:\garden\assets\demo.tilemap.tp)");
+    assert(asset_image_send_to_gpu(tilemap_asset));
 
     //
     // Game mainloop:
@@ -1914,32 +1909,10 @@ gl_make_texture_from_image(void *data, size32_t width, size32_t height, Image_Co
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, type, data);
 }
 
-Tilemap *
-load_tilemap_from_file(mm::Arena *arena, const char *file_path)
+bool
+load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, Tilemap *tilemap)
 {
-    FILE *file = fopen(file_path, "r");
-
-    if (file == nullptr) {
-        return nullptr;
-    }
-
-    Tilemap *tilemap = static_cast<Tilemap *>(mm::arena_alloc_zero(arena, sizeof(Tilemap), ARENA_ALLOC_BASIC));
-    if (tilemap == nullptr) {
-        return nullptr;
-    }
-
-    size_t file_size = get_file_size(file);
-    assert(file_size);
-
-    mm::Arena file_arena = mm::make_arena(file_size);
-
-    char *file_buffer = static_cast<char *>(mm::arena_alloc(&file_arena, file_size, ARENA_ALLOC_BASIC));
-    assert(file_buffer);
-
-    fread(file_buffer, file_size, 1, file);
-    fclose(file);
-
-    Lexer lexer = make_lexer(file_buffer, file_size);
+    Lexer lexer = make_lexer(buffer, buffer_size);
 
     static constexpr Str8_View s_tilemap_directive = "@tilemap";
     static constexpr Str8_View s_tilemap_image_bmp_format = "bmp";
@@ -1989,7 +1962,7 @@ load_tilemap_from_file(mm::Arena *arena, const char *file_path)
             // NOTE(gr3yknigh1): This can be fixed with adding stage with Token generation, like
             // proper lexers does [2025/02/26]
             tilemap->indexes_count = tilemap->row_count * tilemap->col_count;
-            tilemap->indexes = static_cast<int *>(mm::arena_alloc_zero(arena, tilemap->indexes_count * sizeof(*tilemap->indexes), ARENA_ALLOC_BASIC));
+            tilemap->indexes = static_cast<int *>(mm::allocate(tilemap->indexes_count * sizeof(*tilemap->indexes)));
 
             continue;
         }
@@ -2016,24 +1989,54 @@ load_tilemap_from_file(mm::Arena *arena, const char *file_path)
         lexer_advance(&lexer);
     }
 
-    tilemap->image.u.bitmap = static_cast<Bitmap_Picture *>(
-        mm::arena_alloc(arena, sizeof(Bitmap_Picture), ARENA_ALLOC_BASIC));
-
     // TODO(gr3yknigh1): Factor this out [2025/02/24]
     assert(tilemap_image_path_view.length && tilemap_image_path_view.data);
 
-    char *tilemap_image_path = (char *)HeapAlloc(GetProcessHeap(), (DWORD)(tilemap_image_path_view.length + 1), HEAP_ZERO_MEMORY);
+    char *tilemap_image_path = (char *)mm::allocate(tilemap_image_path_view.length + 1);
+    mm::zero_memory(tilemap_image_path, tilemap_image_path_view.length + 1);
     assert(str8_view_copy_to_nullterminated(tilemap_image_path_view, tilemap_image_path, tilemap_image_path_view.length + 1));
 
     // TODO(gr3yknigh1): Generalize format validation [2025/02/24]
-    assert(tilemap->image.format == Tilemap_Image_Format::Bitmap);
-    assert(load_bitmap_picture_from_file(arena, tilemap->image.u.bitmap, tilemap_image_path));
 
-    assert(HeapFree(GetProcessHeap(), 0, tilemap_image_path));
+    tilemap->image.u.asset = asset_load_image(store, tilemap_image_path);
+    assert(tilemap->image.u.asset);
 
-    assert(free_arena(&file_arena));
+    mm::deallocate(tilemap_image_path);
 
     return tilemap;
+}
+
+Asset *
+asset_load_tilemap(Asset_Store *store, const char *file)
+{
+    assert(store && file);
+
+    auto *asset = mm::allocate_struct<Asset>(&store->asset_pool);
+    assert(asset);
+
+
+    asset->type = Asset_Type::Tilemap;
+    asset->location.type = Asset_Location_Type::File;
+    asset->location.u.file.path = file /*asset_store_resolve_file(file)*/;
+    asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
+    asset->location.u.file.size = get_file_size(asset->location.u.file.handle);
+    assert(asset->location.u.file.handle);
+
+    size_t buffer_size = asset->location.u.file.size + 1;
+    void* buffer = mm::allocate(asset->location.u.file.size);
+    mm::zero_memory(buffer, buffer_size);
+
+    fread(buffer, buffer_size - 1, 1, asset->location.u.file.handle);
+
+    assert(load_tilemap_from_buffer(store, static_cast<char *>(buffer), buffer_size, &asset->u.tilemap));
+
+    mm::deallocate(buffer);
+
+    asset->state = Asset_State::Loaded;
+    fclose(asset->location.u.file.handle);
+    asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
+
+    return asset;
 }
 
 
@@ -2691,18 +2694,16 @@ asset_watch_routine([[maybe_unused]] Watch_Context *watch_context, const Str16_V
 
     Reload_Context *reload_context = reinterpret_cast<Reload_Context *>(parameter);
 
-    if (reload_context->store->place != Asset_Store_Place::Folder) {
-        return;
-    }
+    if (reload_context->store->place == Asset_Store_Place::Folder) {
+        FOR_EACH_ASSET(it, reload_context->store) {
+            if (it->location.type != Asset_Location_Type::File) {
+                continue;
+            }
 
-    FOR_EACH_ASSET(it, reload_context->store) {
-        if (it->location.type != Asset_Location_Type::File) {
-            continue;
-        }
-
-        if (str16_view_is_equals(file_name, it->location.u.file.path)) {
-            it->should_reload.test_and_set();
-            break;
+            if (str16_view_is_equals(file_name, it->location.u.file.path)) {
+                it->should_reload.test_and_set();
+                return;
+            }
         }
     }
 
@@ -2776,4 +2777,52 @@ compile_shader(char *source_code, size_t file_size)
     Shader_Compile_Result result{};
     result.shader_program_id = link_shader_program(vertex_module_id, fragment_module_id);
     return result;
+}
+
+bool
+asset_image_send_to_gpu(Asset_Store *store, Asset *asset, Shader *shader, Camera *camera)
+{
+    assert(asset->type == Asset_Type::Image);
+
+    asset->u.image.slot = GL_TEXTURE1;
+    glActiveTexture(asset->u.image.slot);
+    glGenTextures(1, &asset->u.image.id);
+    glBindTexture(GL_TEXTURE_2D, asset->u.image.id);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl_make_texture_from_image(
+        asset->u.image.pixels.data, asset->u.image.width, asset->u.image.height,
+        asset->u.image.layout, GL_RGBA8);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    // NOTE: After loading atlas in GPU, we do not need to keep it in RAM.
+    assert(asset_unload_content(&store, asset));
+
+    if (shader) {
+        GLint texture_uniform_loc = glGetUniformLocation(shader->program_id, "u_texture");
+        assert(texture_uniform_loc != -1);
+
+        glUniform1ui(texture_uniform_loc, asset->u.image.id);
+    }
+
+    if (camera && shader) {
+        GLint model_uniform_loc = glGetUniformLocation(shader->program_id, "model");
+        assert(model_uniform_loc != -1);
+
+        GLint projection_uniform_loc = glGetUniformLocation(shader->program_id, "projection");
+        assert(projection_uniform_loc != -1);
+
+
+        // TODO(gr3yknigh1): Move this out in order to use cached values [2025/03/30]
+        glm::mat4 model = glm::identity<glm::mat4>();
+        glm::mat4 projection = camera_get_projection_matrix(&camera, window_width, window_height);
+
+        glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
+        glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
+    }
+
+    return true;
 }

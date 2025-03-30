@@ -1,7 +1,7 @@
 //
 // @tilemap <tile-row-count> <tile-col-count> <image-path> <image-format> <tile-x-pixel-count> <tile-y-pixel-count>
 //
-@tilemap 5 5 "demo-tilemap.bmp" bmp 32 32
+@tilemap 5 5 "P:\garden\assets\demo-tilemap.bmp" bmp 32 32
 
 0 0 0 0 0
 0 1 0 0 0
