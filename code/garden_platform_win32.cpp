@@ -450,6 +450,17 @@ Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout 
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_float  (Vertex_Buffer_Layout *layout, unsigned int count);
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_integer(Vertex_Buffer_Layout *layout, unsigned int count);
 
+
+struct Vertex_Buffer {
+    GLuint id;
+    GLuint vertex_array_id;
+
+    Vertex_Buffer_Layout layout;
+};
+
+bool make_vertex_buffer(Vertex_Buffer *buffer);
+bool bind_vertex_buffer(Vertex_Buffer *buffer);
+
 //
 // @brief Initializes vertex buffer layout.
 //
@@ -771,7 +782,7 @@ struct Image {
     int height;
     Image_Color_Layout layout;
 
-    GLuint slot;
+    GLuint unit;
     GLuint id;
 
     union {
@@ -827,6 +838,7 @@ Asset *asset_load_tilemap(Asset_Store *store, const char *file);
 
 // helper
 bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, Tilemap *tilemap);
+bool asset_image_send_to_gpu(Asset_Store *store, Asset *asset, int unit, Shader *shader);
 
 bool shader_bind(Shader *shader);
 
@@ -877,6 +889,8 @@ bool      lexer_is_end(Lexer *lexer);
 
 
 static void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
+
+int get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y);
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -964,13 +978,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
-    GLuint vertex_array = 0;
-    glGenVertexArrays(1, &vertex_array);
-    glBindVertexArray(vertex_array);
-
-    GLuint vertex_buffer;
-    glGenBuffers(1, &vertex_buffer);
-    glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+    Vertex_Buffer entity_vertex_buffer{};
+    assert(make_vertex_buffer(&entity_vertex_buffer));
+    assert(bind_vertex_buffer(&entity_vertex_buffer));
 
     mm::Arena page_arena = mm::make_arena(1024);
 
@@ -1012,32 +1022,12 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
 
+    //
+    // Atlas:
+    //
     Asset *atlas_asset = asset_load_image(&store, R"(P:\garden\assets\garden_atlas.bmp)");
     assert(atlas_asset);
-
-    /* GLuint atlas_texture = asset_load_image_to_gpu(&store, asset, GL_RGBA8) */;
-    // Move to separate function call?
-    atlas_asset->u.image.slot = GL_TEXTURE0;
-    glActiveTexture(atlas_asset->u.image.slot);
-    glGenTextures(1, &atlas_asset->u.image.id);
-    glBindTexture(GL_TEXTURE_2D, atlas_asset->u.image.id);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    gl_make_texture_from_image(
-        atlas_asset->u.image.pixels.data, atlas_asset->u.image.width, atlas_asset->u.image.height,
-        atlas_asset->u.image.layout, GL_RGBA8);
-    glGenerateMipmap(GL_TEXTURE_2D);
-
-    // NOTE: After loading atlas in GPU, we do not need to keep it in RAM.
-    assert(asset_unload_content(&store, atlas_asset));
-
-    GLint atlas_texture_uniform_loc = glGetUniformLocation(basic_shader->program_id, "u_texture");
-    assert(atlas_texture_uniform_loc != -1);
-
-    glUniform1ui(atlas_texture_uniform_loc, atlas_asset->u.image.id);
+    assert(asset_image_send_to_gpu(&store, atlas_asset, 0, basic_shader));
 
     mm::Arena asset_arena = mm::make_arena(1024000);  // @cleanup
 
@@ -1057,9 +1047,68 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Setup tilemap atlas:
     //
-
     Asset *tilemap_asset = asset_load_tilemap(&store, R"(P:\garden\assets\demo.tilemap.tp)");
-    assert(asset_image_send_to_gpu(tilemap_asset));
+    assert(asset_image_send_to_gpu(&store, tilemap_asset->u.tilemap.image.u.asset, 1, basic_shader));
+
+    Vertex_Buffer tilemap_vertex_buffer{};
+    assert(make_vertex_buffer(&tilemap_vertex_buffer));
+    assert(bind_vertex_buffer(&tilemap_vertex_buffer));
+
+    Vertex_Buffer_Layout tilemap_vertex_buffer_layout{};
+    assert(make_vertex_buffer_layout(&page_arena, &tilemap_vertex_buffer_layout, 4));
+
+    assert(vertex_buffer_layout_push_float(&tilemap_vertex_buffer_layout, 2));
+    assert(vertex_buffer_layout_push_float(&tilemap_vertex_buffer_layout, 2));
+    assert(vertex_buffer_layout_push_integer(&tilemap_vertex_buffer_layout, 1));
+
+    vertex_buffer_layout_build_attrs(&tilemap_vertex_buffer_layout);
+
+    mm::arena_reset(&page_arena);
+
+    Tilemap *tilemap = &tilemap_asset->u.tilemap;
+
+    static size_t TILEMAP_VERTEX_COUNT_PER_TILE = 6; // two triangles
+    float tilemap_position_x = 100, tilemap_position_y = 100;
+    size_t tilemap_tiles_count = tilemap->row_count * tilemap->col_count;
+    size_t tilemap_vertexes_buffer_size = tilemap_tiles_count * TILEMAP_VERTEX_COUNT_PER_TILE * sizeof(Vertex);
+    Vertex *tilemap_vertexes = static_cast<Vertex *>(mm::allocate(tilemap_vertexes_buffer_size)); // TODO: Free later
+    size_t tilemap_vertexes_count = 0;
+    Image *tilemap_texture = &tilemap->image.u.asset->u.image;
+
+    Atlas tilemap_atlas{
+        #if 1
+        static_cast<float>(tilemap_texture->width),
+        static_cast<float>(tilemap_texture->height)
+        #else
+        static_cast<float>(tilemap->tile_x_pixel_count),
+        static_cast<float>(tilemap->tile_y_pixel_count)
+        #endif
+    };
+
+    for (int col_idx = 0; col_idx < tilemap->col_count; ++col_idx) {
+        for (int row_idx = 0; row_idx < tilemap->row_count; ++row_idx) {
+
+            float tile_x = tilemap_position_x + col_idx * 100; //tilemap->tile_x_pixel_count;
+            float tile_y = tilemap_position_y + row_idx * 100; //tilemap->tile_y_pixel_count;
+
+
+            int index_offset = get_offset_from_coords_of_2d_grid_array_rm(tilemap->col_count, col_idx, row_idx);
+            float index = static_cast<float>(tilemap->indexes[index_offset]);
+
+            Rect_F32 tile_atlas_location{
+                /* x: */ floorf(index / tilemap->col_count) * static_cast<float>(tilemap->tile_x_pixel_count),
+                /* y: */ floorf(fmodf(index, static_cast<float>(tilemap->col_count))) * static_cast<float>(tilemap->tile_y_pixel_count),
+                /* width: */ static_cast<float>(tilemap->tile_x_pixel_count),
+                /* height: */ static_cast<float>(tilemap->tile_y_pixel_count)
+            };
+
+            static Color4 tile_color = { 200, 100, 0, 255 };
+
+            tilemap_vertexes_count += generate_rect_with_atlas(
+                tilemap_vertexes + tilemap_vertexes_count, tile_x, tile_y, 100, 100 /* static_cast<float>(tilemap->tile_x_pixel_count), static_cast<float>(tilemap->tile_y_pixel_count) */, tile_atlas_location, &tilemap_atlas, tile_color);
+
+        }
+    }
 
     //
     // Game mainloop:
@@ -1185,21 +1234,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 assert(asset_reload(&store, it));
 
                 if (it->type == Asset_Type::Image) {
-                    glActiveTexture(it->u.image.slot);
-                    glBindTexture(GL_TEXTURE_2D, it->u.image.id);
-
-                    gl_make_texture_from_image(it->u.image.pixels.data, it->u.image.width, it->u.image.height, it->u.image.layout, GL_RGBA8);
-
-                    assert(asset_unload_content(&store, it));
-
-                    glUniform1ui(atlas_texture_uniform_loc, it->u.image.id);
-
-                    glGenerateMipmap(GL_TEXTURE_2D);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                    assert(asset_image_send_to_gpu(&store, it, it->u.image.unit, basic_shader));
                 }
 
                 if (it->type == Asset_Type::Shader) {
@@ -1219,7 +1254,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                     glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
                     glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
 
-                    atlas_texture_uniform_loc = glGetUniformLocation(shader->program_id, "u_texture");
+                    GLuint atlas_texture_uniform_loc = glGetUniformLocation(shader->program_id, "u_texture");
                     assert(atlas_texture_uniform_loc != -1);
 
                     glUniform1ui(atlas_texture_uniform_loc, atlas_asset->u.image.id);
@@ -1241,7 +1276,29 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+            if (tilemap_vertexes_count > 0) {
+                assert(bind_vertex_buffer(&tilemap_vertex_buffer));
+
+                /// XXX
+                glBindTexture(GL_TEXTURE_2D, tilemap_asset->u.tilemap.image.u.asset->u.image.id);
+                GLuint texture_uniform_loc = glGetUniformLocation(basic_shader->program_id, "u_texture");
+                assert(texture_uniform_loc != -1);
+                glUniform1i(texture_uniform_loc, tilemap_asset->u.tilemap.image.u.asset->u.image.unit);
+
+                size_t vertex_buffer_size = tilemap_vertexes_count * sizeof(*tilemap_vertexes);
+                glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, tilemap_vertexes, GL_DYNAMIC_DRAW);
+                glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride)); // TODO(gr3yknigh1): Replace layout [2025/03/30]
+            }
+
             if (platform_context.vertexes_count > 0) {
+                assert(bind_vertex_buffer(&entity_vertex_buffer));
+
+                /// XXX
+                glBindTexture(GL_TEXTURE_2D, atlas_asset->u.image.id);
+                GLuint texture_uniform_loc = glGetUniformLocation(basic_shader->program_id, "u_texture");
+                assert(texture_uniform_loc != -1);
+                glUniform1i(texture_uniform_loc, atlas_asset->u.image.unit);
+
                 size_t vertex_buffer_size = platform_context.vertexes_count * sizeof(*platform_context.vertexes);
                 glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, platform_context.vertexes, GL_DYNAMIC_DRAW);
                 glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
@@ -2780,12 +2837,12 @@ compile_shader(char *source_code, size_t file_size)
 }
 
 bool
-asset_image_send_to_gpu(Asset_Store *store, Asset *asset, Shader *shader, Camera *camera)
+asset_image_send_to_gpu(Asset_Store *store, Asset *asset, int unit, Shader *shader)
 {
     assert(asset->type == Asset_Type::Image);
 
-    asset->u.image.slot = GL_TEXTURE1;
-    glActiveTexture(asset->u.image.slot);
+    asset->u.image.unit = unit;
+    glActiveTexture(GL_TEXTURE0 + asset->u.image.unit);
     glGenTextures(1, &asset->u.image.id);
     glBindTexture(GL_TEXTURE_2D, asset->u.image.id);
 
@@ -2799,30 +2856,44 @@ asset_image_send_to_gpu(Asset_Store *store, Asset *asset, Shader *shader, Camera
     glGenerateMipmap(GL_TEXTURE_2D);
 
     // NOTE: After loading atlas in GPU, we do not need to keep it in RAM.
-    assert(asset_unload_content(&store, asset));
+    assert(asset_unload_content(store, asset));
 
     if (shader) {
         GLint texture_uniform_loc = glGetUniformLocation(shader->program_id, "u_texture");
         assert(texture_uniform_loc != -1);
 
-        glUniform1ui(texture_uniform_loc, asset->u.image.id);
-    }
-
-    if (camera && shader) {
-        GLint model_uniform_loc = glGetUniformLocation(shader->program_id, "model");
-        assert(model_uniform_loc != -1);
-
-        GLint projection_uniform_loc = glGetUniformLocation(shader->program_id, "projection");
-        assert(projection_uniform_loc != -1);
-
-
-        // TODO(gr3yknigh1): Move this out in order to use cached values [2025/03/30]
-        glm::mat4 model = glm::identity<glm::mat4>();
-        glm::mat4 projection = camera_get_projection_matrix(&camera, window_width, window_height);
-
-        glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
-        glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
+        glUniform1i(texture_uniform_loc, asset->u.image.unit);
     }
 
     return true;
+}
+
+bool
+make_vertex_buffer(Vertex_Buffer *buffer)
+{
+    assert(buffer);
+
+    glGenVertexArrays(1, &buffer->vertex_array_id);
+    glBindVertexArray(buffer->vertex_array_id);
+
+    glGenBuffers(1, &buffer->id);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer->id);
+
+    return true;
+}
+
+bool
+bind_vertex_buffer(Vertex_Buffer *buffer)
+{
+    assert(buffer);
+    glBindVertexArray(buffer->vertex_array_id);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer->id);
+
+    return true;
+}
+
+int
+get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y)
+{
+    return width * y + x;
 }
