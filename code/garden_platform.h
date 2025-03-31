@@ -11,6 +11,10 @@
 
 #include <stdint.h>
 
+#include <glm/glm.hpp>
+#include <glm/ext.hpp>
+#include <glm/ext/matrix_transform.hpp>
+
 #if !defined(MAKE_FLAG)
     #define MAKE_FLAG(INDEX) (1 << (INDEX))
 #endif
@@ -253,8 +257,32 @@ struct Input_State {
     float y_direction;
 };
 
+enum class Camera_ViewMode {
+    Perspective,
+    Orthogonal
+};
+
+struct Camera {
+    glm::vec3 position;
+    glm::vec3 front;
+    glm::vec3 up;
+
+    float yaw;
+    float pitch;
+
+    float speed;
+    float sensitivity;
+    float fov;
+
+    float near;
+    float far;
+
+    Camera_ViewMode view_mode;
+};
+
 struct Platform_Context {
     Input_State input_state;
+    Camera *camera;
 
     mm::Arena persist_arena;
 

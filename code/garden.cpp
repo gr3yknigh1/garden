@@ -2,7 +2,27 @@
 
 #include <math.h>   // sqrtf, powf
 
+#if !defined(UNICODE)
+    #define UNICODE
+#endif
+
+#if !defined(NOMINMAX)
+    #define NOMINMAX
+#endif
+
+#ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif
+
 #include <windows.h>
+
+#if defined(far)
+    #undef far
+#endif
+
+#if defined(near)
+    #undef near
+#endif
 
 #include "garden_platform.h"
 #include "garden_gameplay.h"
@@ -55,6 +75,10 @@ game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
         // TODO(gr3yknigh1): Fix strange floating-point bug for diagonal movement [2025/02/20]
         normalize_vector2f(&platform->input_state.x_direction, &platform->input_state.y_direction);
     }
+
+
+    platform->camera->position.x = -game->player_x;
+    platform->camera->position.y = -game->player_y;
 }
 
 extern "C" __declspec(dllexport) void

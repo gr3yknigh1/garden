@@ -16,13 +16,29 @@
     #include <crtdbg.h>
 #endif
 
+#if !defined(UNICODE)
+    #define UNICODE
+#endif
+
+#if !defined(NOMINMAX)
+    #define NOMINMAX
+#endif
+
+#ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif
+
 #include <windows.h>
 #include <intrin.h> // __rdtsc
 
+#if defined(far)
+    #undef far
+#endif
 
-// NOTE(i.akkuzin): For `Camera` struct. [2025/02/09]
-#undef near
-#undef far
+#if defined(near)
+    #undef near
+#endif
+
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
@@ -381,28 +397,6 @@ LRESULT CALLBACK win32_window_message_handler(HWND window, UINT message, WPARAM 
 // Camera
 //
 
-enum class Camera_ViewMode {
-    Perspective,
-    Orthogonal
-};
-
-struct Camera {
-    glm::vec3 position;
-    glm::vec3 front;
-    glm::vec3 up;
-
-    float yaw;
-    float pitch;
-
-    float speed;
-    float sensitivity;
-    float fov;
-
-    float near;
-    float far;
-
-    Camera_ViewMode view_mode;
-};
 
 Camera make_camera(Camera_ViewMode view_mode);
 
@@ -1126,6 +1120,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Platform_Context platform_context;
     ZERO_STRUCT(&platform_context);
 
+    platform_context.camera = &camera;
     platform_context.persist_arena = mm::make_arena(1024);
     platform_context.vertexes_arena = mm::make_arena(sizeof(Vertex) * 1024);
 
@@ -1223,6 +1218,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
             //
 
             FOR_EACH_ASSET(it, &store) {
+                if (it->state == Asset_State::NotLoaded) {
+                    continue;
+                }
+
                 if (it->location.type != Asset_Location_Type::File) {
                     continue;
                 }
@@ -1271,6 +1270,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         //
 
         PERF_BLOCK_BEGIN(DRAW);
+
+            // XXX
+            model = glm::identity<glm::mat4>();
+            model = glm::translate(model, camera.position);
+            projection = camera_get_projection_matrix(&camera, window_width, window_height);
+            glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
+            glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
 
             gameplay.on_draw(&platform_context, game_context, static_cast<float>(dt));
 
