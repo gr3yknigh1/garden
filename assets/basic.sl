@@ -38,6 +38,7 @@ main(void)
 
     // NOTE: Passing to fragment shader
     color = unpack_rgba_color(layout_color);
+    color.rb = vec2(1, 1);
     texture_coords = layout_texture_coords;
 }
 

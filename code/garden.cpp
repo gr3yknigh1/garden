@@ -29,7 +29,7 @@
 
 
 struct Game_Context {
-    float player_x, player_y;
+    float player_x, player_y, player_w, player_h;
     float player_speed;
 
     Rect_F32 atlas_location;
@@ -51,6 +51,8 @@ game_on_init(Platform_Context *platform)
 
     game->player_x = 20;
     game->player_y = 20;
+    game->player_w = 100;
+    game->player_h = 100;
     game->player_speed = 400;
     game->atlas_location = { 0, 0, 16, 16 };
 
@@ -61,14 +63,12 @@ extern "C" __declspec(dllexport) void
 game_on_load(Platform_Context *platform, Game_Context *game)
 {
     (void)platform;
-    game->player_speed = 3000;
+    game->player_speed = 300;
 }
 
 extern "C" __declspec(dllexport) void
 game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
 {
-    game->player_x += game->player_speed * platform->input_state.x_direction * delta_time;
-    game->player_y += game->player_speed * platform->input_state.y_direction * delta_time;
 
 
     if (absolute(platform->input_state.x_direction) >= 1.0f && absolute(platform->input_state.y_direction) >= 1.0f) {
@@ -76,9 +76,12 @@ game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
         normalize_vector2f(&platform->input_state.x_direction, &platform->input_state.y_direction);
     }
 
+    game->player_x += game->player_speed * platform->input_state.x_direction * delta_time;
+    game->player_y += game->player_speed * platform->input_state.y_direction * delta_time;
 
-    platform->camera->position.x = -game->player_x;
-    platform->camera->position.y = -game->player_y;
+
+    platform->camera->position.x = -game->player_x - game->player_w / 2;
+    platform->camera->position.y = -game->player_y - game->player_h / 2;
 }
 
 extern "C" __declspec(dllexport) void
@@ -92,7 +95,7 @@ game_on_draw(Platform_Context *platform, Game_Context *game, float delta_time)
 
     platform->vertexes = static_cast<Vertex *>(arena_alloc_zero(&platform->vertexes_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC));
     // platform->vertexes_count = generate_rect(vertexes, player_x, player_y, 100, 100, rect_color);
-    platform->vertexes_count = generate_rect_with_atlas(platform->vertexes, game->player_x, game->player_y, 100, 100, game->atlas_location, &atlas, rect_color);
+    platform->vertexes_count = generate_rect_with_atlas(platform->vertexes, game->player_x, game->player_y, game->player_w, game->player_h, game->atlas_location, &atlas, rect_color);
 }
 
 extern "C" __declspec(dllexport) void

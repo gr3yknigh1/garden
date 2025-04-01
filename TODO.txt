@@ -8,7 +8,8 @@ TODOs
 - [V] Hot-reload assets (draft) #assets
 - [V] Unify asset hot-reload system (make it so you define assets to load and track them changing on disk
 
-- [ ] Tilemap rendering (map) #assets #rendering
+- [X] Tilemap rendering (map) #assets #rendering
+- [ ] Move camera with player. #rendering  <<<<
 - [ ] Rework input system? I don't like that platform-layer defines changes for Input_State
 
 - [ ] Sine-wave play with XAudio2 (or DirectSound?) #sound

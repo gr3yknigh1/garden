@@ -113,7 +113,8 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
         c, [ join(code_dir, "garden.cpp"), join(code_dir, "garden_platform.cpp") ], # TODO(gr3yknigh1): Move garden_platform.cpp away in library [2025/03/03]
         output=join(output_dir(build_type), GAMEPLAY_DLL_NAME),
         includes=[
-            join(project_dir, "glad")
+            join(project_dir, "glad"),
+            glm_folder,
         ],
         defines=dict(
             **common_defines,

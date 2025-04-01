@@ -1274,6 +1274,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
             // XXX
             model = glm::identity<glm::mat4>();
             model = glm::translate(model, camera.position);
+            model = glm::translate(model, glm::vec3(window_width / 2, window_height / 2, 0));
             projection = camera_get_projection_matrix(&camera, window_width, window_height);
             glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
             glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
