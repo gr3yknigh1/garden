@@ -827,11 +827,6 @@ struct Asset {
 };
 
 Asset *asset_load(Asset_Store *store, Asset_Type type, const char *file);
-#if 0
-Asset *asset_load_image(Asset_Store *store, const char *file);
-Asset *asset_load_shader(Asset_Store *store, const char *file);
-Asset *asset_load_tilemap(Asset_Store *store, const char *file);
-#endif
 
 // helper
 bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, Tilemap *tilemap);
@@ -2074,39 +2069,6 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
     return tilemap;
 }
 
-Asset *
-asset_load_tilemap(Asset_Store *store, const char *file)
-{
-    assert(store && file);
-
-    auto *asset = mm::allocate_struct<Asset>(&store->asset_pool);
-    assert(asset);
-
-
-    asset->type = Asset_Type::Tilemap;
-    asset->location.type = Asset_Location_Type::File;
-    asset->location.u.file.path = file /*asset_store_resolve_file(file)*/;
-    asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
-    asset->location.u.file.size = get_file_size(asset->location.u.file.handle);
-    assert(asset->location.u.file.handle);
-
-    size_t buffer_size = asset->location.u.file.size + 1;
-    void* buffer = mm::allocate(asset->location.u.file.size);
-    mm::zero_memory(buffer, buffer_size);
-
-    fread(buffer, buffer_size - 1, 1, asset->location.u.file.handle);
-
-    assert(load_tilemap_from_buffer(store, static_cast<char *>(buffer), buffer_size, &asset->u.tilemap));
-
-    mm::deallocate(buffer);
-
-    asset->state = Asset_State::Loaded;
-    fclose(asset->location.u.file.handle);
-    asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
-
-    return asset;
-}
-
 
 Lexer
 make_lexer(char *buffer, size_t buffer_size)
@@ -2592,87 +2554,6 @@ asset_load(Asset_Store *store, Asset_Type type, const char *file)
 
     return asset;
 }
-
-#if 0
-Asset *
-asset_load_image(Asset_Store *store, const char *file)
-{
-    // TODO(gr3yknigh1): Handle errors and mark asset as failed to load: Asset_State::LoadFailure [2025/03/10]
-
-    assert(store && file);
-
-    auto *asset = mm::allocate_struct<Asset>(&store->asset_pool);
-    assert(asset);
-
-    asset->type = Asset_Type::Image;
-    asset->location.type = Asset_Location_Type::File;
-    asset->location.u.file.path = file /*asset_store_resolve_file(file)*/;
-    asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
-    asset->location.u.file.size = get_file_size(asset->location.u.file.handle);
-    assert(asset->location.u.file.handle);
-
-    // NOTE(gr3yknigh1): Assume that file is path to BMP image [2025/03/10]
-
-    Bitmap_Picture picture;
-    assert(load_bitmap_picture_info_from_file(&picture, asset->location.u.file.handle));
-
-    //
-    // TODO(gr3yknigh1): Allocate less data, because file_size includes size of metadata [2025/03/10]
-    //
-    picture.u.data = mm::allocate(&store->asset_content, picture.header.file_size);
-    assert(load_bitmap_picture_pixel_data_from_file(&picture, asset->location.u.file.handle));
-
-    assert(asset_from_bitmap_picture(asset, &picture));
-
-    asset->state = Asset_State::Loaded;
-
-    fclose(asset->location.u.file.handle);
-    asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
-
-    return asset;
-}
-
-Asset *
-asset_load_shader(Asset_Store *store, const char *file)
-{
-    assert(store && file);
-
-    auto *asset = mm::allocate_struct<Asset>(&store->asset_pool);
-    assert(asset);
-
-    asset->type = Asset_Type::Shader;
-    asset->location.type = Asset_Location_Type::File;
-    asset->location.u.file.path = file /*asset_store_resolve_file(file)*/;
-    asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
-    asset->location.u.file.size = get_file_size(asset->location.u.file.handle);
-    assert(asset->location.u.file.handle);
-
-    asset->u.shader.source_code = static_cast<char *>(mm::allocate(&store->asset_content, asset->location.u.file.size));
-    mm::zero_memory(asset->u.shader.source_code, asset->location.u.file.size);
-
-    fread(asset->u.shader.source_code, asset->location.u.file.size, 1, asset->location.u.file.handle);
-
-    Shader_Compile_Result result = compile_shader(asset->u.shader.source_code, asset->location.u.file.size);
-    asset->u.shader.program_id = result.shader_program_id;
-    assert(asset->u.shader.program_id);
-
-    //
-    // TODO(gr3yknigh1): Delete shader modules. They are no longer needed. [2025/03/28]
-    //
-
-    #if 0
-    /* After linking shaders no longer needed. */
-    glDeleteShader(vertex_module->id);
-    glDeleteShader(fragment_module->id);
-    #endif
-
-
-    fclose(asset->location.u.file.handle);
-    asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
-    asset->state = Asset_State::Loaded;
-    return asset;
-}
-#endif
 
 bool
 asset_reload(Asset_Store *store, Asset *asset)
