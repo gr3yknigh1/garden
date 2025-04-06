@@ -63,14 +63,13 @@ extern "C" __declspec(dllexport) void
 game_on_load(Platform_Context *platform, Game_Context *game)
 {
     (void)platform;
+
     game->player_speed = 300;
 }
 
 extern "C" __declspec(dllexport) void
 game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
 {
-
-
     if (absolute(platform->input_state.x_direction) >= 1.0f && absolute(platform->input_state.y_direction) >= 1.0f) {
         // TODO(gr3yknigh1): Fix strange floating-point bug for diagonal movement [2025/02/20]
         normalize_vector2f(&platform->input_state.x_direction, &platform->input_state.y_direction);
@@ -90,11 +89,10 @@ game_on_draw(Platform_Context *platform, Game_Context *game, float delta_time)
     (void)delta_time;
 
     // XXX
-    static Color4 rect_color = { 200, 100, 0, 255 };
-    static Atlas atlas = { 32, 32 };
+    Color4 rect_color = { 255, 255, 255, 255  };
+    Atlas atlas = { 32, 32 };
 
     platform->vertexes = static_cast<Vertex *>(arena_alloc_zero(&platform->vertexes_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC));
-    // platform->vertexes_count = generate_rect(vertexes, player_x, player_y, 100, 100, rect_color);
     platform->vertexes_count = generate_rect_with_atlas(platform->vertexes, game->player_x, game->player_y, game->player_w, game->player_h, game->atlas_location, &atlas, rect_color);
 }
 

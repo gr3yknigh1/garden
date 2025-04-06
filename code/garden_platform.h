@@ -218,7 +218,7 @@ typedef int packed_rgba_t;
 static_assert(sizeof(packed_rgba_t) == 4);
 
 #if !defined(MAKE_PACKED_RGBA)
-    #define MAKE_PACKED_RGBA(R, G, B, A) (((R) << 24) + ((G) << 16) + ((B) << 8) + (A))
+    #define MAKE_PACKED_RGBA(R, G, B, A) (((R) << 24) | ((G) << 16) | ((B) << 8) | (A))
 #endif
 
 #pragma pack(push, 1)

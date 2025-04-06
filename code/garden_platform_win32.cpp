@@ -826,9 +826,12 @@ struct Asset {
     } u;
 };
 
+Asset *asset_load(Asset_Store *store, Asset_Type type, const char *file);
+#if 0
 Asset *asset_load_image(Asset_Store *store, const char *file);
 Asset *asset_load_shader(Asset_Store *store, const char *file);
 Asset *asset_load_tilemap(Asset_Store *store, const char *file);
+#endif
 
 // helper
 bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, Tilemap *tilemap);
@@ -885,6 +888,7 @@ bool      lexer_is_end(Lexer *lexer);
 static void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
 
 int get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y);
+
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -995,7 +999,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Asset_Store store;
     assert(make_asset_store_from_folder(&store, STRINGIFY(GARDEN_ASSET_FOLDER)));
 
-    Asset *basic_shader_asset = asset_load_shader(&store, R"(P:\garden\assets\basic.sl)");
+    Asset *basic_shader_asset = asset_load(&store, Asset_Type::Shader, R"(P:\garden\assets\basic.sl)");
     assert(basic_shader_asset);
 
     Shader *basic_shader = &basic_shader_asset->u.shader;
@@ -1019,7 +1023,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Atlas:
     //
-    Asset *atlas_asset = asset_load_image(&store, R"(P:\garden\assets\garden_atlas.bmp)");
+    Asset *atlas_asset = asset_load(&store, Asset_Type::Image, R"(P:\garden\assets\garden_atlas.bmp)");
     assert(atlas_asset);
     assert(asset_image_send_to_gpu(&store, atlas_asset, 0, basic_shader));
 
@@ -1041,7 +1045,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Setup tilemap atlas:
     //
-    Asset *tilemap_asset = asset_load_tilemap(&store, R"(P:\garden\assets\demo.tilemap.tp)");
+    Asset *tilemap_asset = asset_load(&store, Asset_Type::Tilemap, R"(P:\garden\assets\demo.tilemap.tp)");
     assert(asset_image_send_to_gpu(&store, tilemap_asset->u.tilemap.image.u.asset, 1, basic_shader));
 
     Vertex_Buffer tilemap_vertex_buffer{};
@@ -1051,9 +1055,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     Vertex_Buffer_Layout tilemap_vertex_buffer_layout{};
     assert(make_vertex_buffer_layout(&page_arena, &tilemap_vertex_buffer_layout, 4));
 
-    assert(vertex_buffer_layout_push_float(&tilemap_vertex_buffer_layout, 2));
-    assert(vertex_buffer_layout_push_float(&tilemap_vertex_buffer_layout, 2));
-    assert(vertex_buffer_layout_push_integer(&tilemap_vertex_buffer_layout, 1));
+    assert(vertex_buffer_layout_push_float(&tilemap_vertex_buffer_layout, 2));    // Position
+    assert(vertex_buffer_layout_push_float(&tilemap_vertex_buffer_layout, 2));    // UV
+    assert(vertex_buffer_layout_push_integer(&tilemap_vertex_buffer_layout, 1));  // Color
 
     vertex_buffer_layout_build_attrs(&tilemap_vertex_buffer_layout);
 
@@ -1082,8 +1086,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     for (int col_idx = 0; col_idx < tilemap->col_count; ++col_idx) {
         for (int row_idx = 0; row_idx < tilemap->row_count; ++row_idx) {
 
-            float tile_x = tilemap_position_x + col_idx * 100; //tilemap->tile_x_pixel_count;
-            float tile_y = tilemap_position_y + row_idx * 100; //tilemap->tile_y_pixel_count;
+            float tile_x = tilemap_position_x + col_idx * 100; // tilemap->tile_x_pixel_count;
+            float tile_y = tilemap_position_y + row_idx * 100; // tilemap->tile_y_pixel_count;
 
 
             int index_offset = get_offset_from_coords_of_2d_grid_array_rm(tilemap->col_count, col_idx, row_idx);
@@ -1256,7 +1260,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                     GLuint atlas_texture_uniform_loc = glGetUniformLocation(shader->program_id, "u_texture");
                     assert(atlas_texture_uniform_loc != -1);
 
-                    glUniform1ui(atlas_texture_uniform_loc, atlas_asset->u.image.id);
+                    glUniform1i(atlas_texture_uniform_loc, atlas_asset->u.image.unit);
                 }
 
                 it->should_reload.clear();
@@ -1271,10 +1275,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
         PERF_BLOCK_BEGIN(DRAW);
 
-            // XXX
             model = glm::identity<glm::mat4>();
             model = glm::translate(model, camera.position);
             model = glm::translate(model, glm::vec3(window_width / 2, window_height / 2, 0));
+
             projection = camera_get_projection_matrix(&camera, window_width, window_height);
             glUniformMatrix4fv(model_uniform_loc, 1, GL_FALSE, glm::value_ptr(model));
             glUniformMatrix4fv(projection_uniform_loc, 1, GL_FALSE, glm::value_ptr(projection));
@@ -2062,7 +2066,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
 
     // TODO(gr3yknigh1): Generalize format validation [2025/02/24]
 
-    tilemap->image.u.asset = asset_load_image(store, tilemap_image_path);
+    tilemap->image.u.asset = asset_load(store, Asset_Type::Image, tilemap_image_path);
     assert(tilemap->image.u.asset);
 
     mm::deallocate(tilemap_image_path);
@@ -2517,6 +2521,80 @@ asset_store_destroy(Asset_Store *store)
 }
 
 Asset *
+asset_load(Asset_Store *store, Asset_Type type, const char *file)
+{
+    // TODO(gr3yknigh1): Handle errors and mark asset as failed to load: Asset_State::LoadFailure [2025/03/10]
+
+    assert(store && file);
+
+    Asset *asset = mm::allocate_struct<Asset>(&store->asset_pool);
+    assert(asset);
+
+    asset->type = type;
+
+    Asset_Location *location = &asset->location;
+    location->type          = Asset_Location_Type::File;
+    location->u.file.path   = file /*asset_store_resolve_file(file)*/;
+    location->u.file.handle = fopen(location->u.file.path.data, "r");
+    assert(location->u.file.handle);
+
+    location->u.file.size   = get_file_size(location->u.file.handle);
+
+    if (asset->type == Asset_Type::Image) {
+        // NOTE(gr3yknigh1): Assume that file is path to BMP image [2025/03/10]
+        Bitmap_Picture picture;
+        assert(load_bitmap_picture_info_from_file(&picture, location->u.file.handle));
+
+        // TODO(gr3yknigh1): Allocate less data, because file_size includes size of metadata [2025/03/10]
+        //
+        picture.u.data = mm::allocate(&store->asset_content, picture.header.file_size);
+        assert(load_bitmap_picture_pixel_data_from_file(&picture, location->u.file.handle));
+
+        assert(asset_from_bitmap_picture(asset, &picture));
+    } else if (asset->type == Asset_Type::Shader) {
+
+        asset->u.shader.source_code = static_cast<char *>(mm::allocate(&store->asset_content, location->u.file.size));
+        mm::zero_memory(asset->u.shader.source_code, location->u.file.size);
+        fread(asset->u.shader.source_code, location->u.file.size, 1, location->u.file.handle);
+
+        Shader_Compile_Result result = compile_shader(asset->u.shader.source_code, location->u.file.size);
+        asset->u.shader.program_id = result.shader_program_id;
+        assert(asset->u.shader.program_id);
+
+        //
+        // TODO(gr3yknigh1): Delete shader modules. They are no longer needed. [2025/03/28]
+        //
+
+        #if 0
+        /* After linking shaders no longer needed. */
+        glDeleteShader(vertex_module->id);
+        glDeleteShader(fragment_module->id);
+        #endif
+    } else if (asset->type == Asset_Type::Tilemap) {
+
+        size_t buffer_size = asset->location.u.file.size + 1;
+        void* buffer = mm::allocate(asset->location.u.file.size);
+        mm::zero_memory(buffer, buffer_size);
+
+        fread(buffer, buffer_size - 1, 1, asset->location.u.file.handle);
+
+        assert(load_tilemap_from_buffer(store, static_cast<char *>(buffer), buffer_size, &asset->u.tilemap));
+
+        mm::deallocate(buffer);
+
+    } else {
+        // TODO(gr3yknigh1): Handle an error [2025/04/06]
+    }
+
+    asset->state = Asset_State::Loaded;
+    fclose(location->u.file.handle);
+    location->u.file.handle = nullptr;  // Saying that the file handle is closed
+
+    return asset;
+}
+
+#if 0
+Asset *
 asset_load_image(Asset_Store *store, const char *file)
 {
     // TODO(gr3yknigh1): Handle errors and mark asset as failed to load: Asset_State::LoadFailure [2025/03/10]
@@ -2594,6 +2672,7 @@ asset_load_shader(Asset_Store *store, const char *file)
     asset->state = Asset_State::Loaded;
     return asset;
 }
+#endif
 
 bool
 asset_reload(Asset_Store *store, Asset *asset)
