@@ -1,12 +1,13 @@
-//
-// FILE          code\garden_platform_win32.cpp
-//
-// AUTHORS
-//               Ilya Akkuzin <gr3yknigh1@gmail.com>
-//
-// NOTICE        (c) Copyright 2025 by Ilya Akkuzin. All rights reserved.
-//
+//!
+//! FILE          code\garden_platform_win32.cpp
+//!
+//! AUTHORS
+//!               Ilya Akkuzin <gr3yknigh1@gmail.com>
+//!
+//! NOTICE        (c) Copyright 2025 by Ilya Akkuzin. All rights reserved.
+//!
 #include <atomic>   // std::atomic_flag
+#include <utility>
 
 #include <assert.h> // assert
 #include <stdio.h>  // puts, printf, FILE, fopen, freopen, fseek, fclose
@@ -45,6 +46,9 @@
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
+#include "base/str.h"
+#include "base/str_view.h"
+
 #include "garden_gameplay.h"
 #include "garden_platform.h"
 
@@ -63,217 +67,8 @@
 typedef int bool32_t;
 typedef unsigned int size32_t;
 
-//
-// String handling:
-//
 
-constexpr size_t
-str8_get_length(const char *s) noexcept
-{
-    size_t result = 0;
-
-    while (s[result] != 0) {
-        result++;
-    }
-
-    return result;
-}
-
-struct Str8_View {
-    const char *data;
-    size_t length;
-
-    constexpr inline bool empty(void) const noexcept { return this->length == 0; }
-
-    constexpr inline Str8_View() noexcept : data(nullptr), length(0) {}
-    constexpr inline Str8_View(const char *data_) noexcept : data(data_), length(str8_get_length(data_)) {}
-    constexpr inline Str8_View(const char *data_, size_t length_) noexcept : data(data_), length(length_) {}
-};
-
-inline Str8_View
-str8_view_capture_until(const char **cursor, char until)
-{
-    Str8_View sv;
-
-    sv.data = *cursor;
-
-    while (**cursor != until) {
-        (*cursor)++;
-    }
-
-    sv.length = *cursor - sv.data;
-
-    return sv;
-}
-
-inline bool
-str8_view_copy_to_nullterminated(Str8_View sv, char *out_buffer, size_t out_buffer_size)
-{
-    if (sv.length + 1 > out_buffer_size) {
-        return false;
-    }
-
-    memcpy((void *)out_buffer, sv.data, sv.length);
-    out_buffer[sv.length] = 0;
-    return true;
-}
-
-constexpr bool
-str8_view_is_equals(Str8_View a, Str8_View b)
-{
-    if (a.length != b.length) {
-        return false;
-    }
-
-    // TODO(gr3yknigh1): Do vectorization [2025/01/03]
-    for (size_t i = 0; i < a.length; ++i) {
-        if (a.data[i] != b.data[i]) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-constexpr bool
-str8_view_is_equals(Str8_View a, const char *str)
-{
-    Str8_View b(str);
-    return str8_view_is_equals(a, b);
-}
-
-
-constexpr size_t
-str16_get_length(const wchar_t *s) noexcept
-{
-    size_t result = 0;
-
-    while (s[result] != 0) {
-        result++;
-    }
-
-    return result;
-}
-
-struct Str16_View {
-    const wchar_t *data;
-    size_t length;
-
-    constexpr Str16_View() noexcept : data(nullptr), length(0) {}
-    constexpr Str16_View(const wchar_t *data_) noexcept : data(data_), length(str16_get_length(data_)) {}
-    constexpr Str16_View(const wchar_t *data_, size_t length_) noexcept : data(data_), length(length_) {}
-};
-
-inline bool
-str16_view_copy_to_nullterminated(Str16_View view, wchar_t *out_buffer, size_t out_buffer_size) noexcept
-{
-    size_t required_buffer_size = (view.length + 1) * sizeof(*view.data);
-
-    if (required_buffer_size > out_buffer_size) {
-        return false;
-    }
-
-    memcpy((void *)out_buffer, view.data, view.length * sizeof(*view.data));
-    out_buffer[view.length] = 0;
-    return true;
-}
-
-inline bool
-str16_view_endswith(Str16_View view, Str16_View end) noexcept
-{
-    if (view.length < end.length) {
-        return false;
-    }
-
-    for (size_t end_index = end.length - 1, view_index = view.length - 1; end_index > 0; --end_index, --view_index) {
-        if (end.data[end_index] != view.data[view_index]) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-inline bool
-str16_view_endswith(Str16_View view, Str8_View end) noexcept
-{
-    if (view.length < end.length) {
-        return false;
-    }
-
-    for (size_t end_index = end.length - 1, view_index = view.length - 1; end_index > 0; --end_index, --view_index) {
-
-        const char *c16 = reinterpret_cast<const char *>(view.data + view_index);
-
-        if (end.data[end_index] != c16[0]) {
-            return false;
-        }
-
-        if (c16[1] != 0) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-constexpr bool
-str16_view_is_equals(Str16_View a, Str16_View b) noexcept
-{
-    if (a.length != b.length) {
-        return false;
-    }
-
-    // TODO(gr3yknigh1): Do vectorization [2025/01/03]
-    for (size_t i = 0; i < a.length; ++i) {
-        if (a.data[i] != b.data[i]) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-constexpr bool
-str16_view_is_equals(Str16_View a, const wchar_t *str) noexcept
-{
-    Str16_View b(str);
-    return str16_view_is_equals(a, b);
-}
-
-constexpr bool
-str16_view_is_equals(Str16_View a, Str8_View b) noexcept
-{
-    if (a.length != b.length) {
-        return false;
-    }
-
-    // TODO(gr3yknigh1): Do vectorization [2025/01/03]
-    for (size_t i = 0; i < a.length; ++i) {
-        const mm::byte *c16 = reinterpret_cast<const mm::byte *>(a.data + i);
-
-        if (c16[1] != 0) {
-            return false;
-        }
-
-        mm::byte c8 = b.data[i];
-
-        if (c16[0] != c8) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-constexpr bool
-str16_view_is_equals(Str16_View a, const char *str) noexcept
-{
-    Str8_View b(str);
-    return str16_view_is_equals(a, b);
-}
-
-wchar_t path16_get_separator();
+wchar_t path16_get_separator(void);
 
 bool path16_get_parent(const wchar_t *path, size_t path_length, Str16_View *out);
 
@@ -591,7 +386,7 @@ bool load_bitmap_picture_pixel_data_from_file(Bitmap_Picture *picture, FILE *fil
 // Media:
 //
 
-enum struct Image_Color_Layout {
+enum struct Color_Layout {
     Nothing,
     BGRA_U8,
 };
@@ -601,7 +396,7 @@ enum struct Image_Color_Layout {
 // @pre
 //   - Bind target texture with glBindTexture(GL_TEXTURE_2D, ...);
 //
-void gl_make_texture_from_image(void *data, size32_t width, size32_t height, Image_Color_Layout layout, GLenum internal_format);
+void gl_make_texture_from_pixels(void *pixels, size32_t width, size32_t height, Color_Layout layout, GLenum internal_format);
 
 
 void gl_clear_all_errors(void);
@@ -611,10 +406,6 @@ void gl_print_debug_info(void);
 //
 // Tilemaps:
 //
-
-enum struct Tilemap_Image_Format {
-    Bitmap,
-};
 
 struct Asset;
 
@@ -630,12 +421,7 @@ struct Tilemap {
     int *indexes;
     size_t indexes_count;
 
-    struct {
-        Tilemap_Image_Format format;
-        union {
-            Asset *asset;
-        } u;
-    } image;
+    Asset *texture_asset;
 };
 
 Tilemap *load_tilemap_from_file(mm::Arena *arena, const char *file_path);
@@ -692,15 +478,22 @@ Gameplay load_gameplay(const char *module_path);
 void unload_gameplay(Gameplay *gameplay);
 
 enum struct Asset_Type {
-    Image,
+    Texture,
     Shader,
     Tilemap,
     Count_
 };
 
 enum struct Asset_Store_Place {
+    //!
+    //! @brief That indicates, that `Asset_Store` represented by some kind of folder. Probably usefull for development[2025/04/06]
+    //!
     Folder,
-    ImageFile,
+
+    //!
+    //! @brief That indicates, that `Asset_Store` located inside the single file. Probably usefull only on exports.
+    //!
+    Image,
 };
 
 struct Asset_Store {
@@ -746,24 +539,26 @@ enum struct Asset_Location_Type {
     Buffer,
 };
 
+struct File_Info {
+    FILE  *handle;
+    size_t size;
+    Str8   path;
+
+    ~File_Info(void) noexcept {}
+};
+
+
 struct Asset_Location {
     Asset_Location_Type type;
 
-    union Data {
-        mm::byte dummy;  // Dummy for zero initialization of union in default constructor
-
-        struct {
-            FILE *handle;
-            size_t size;
-            Str8_View path;
-        } file;
-
+    union Location_Union {
+        File_Info file;
         Buffer_View buffer_view;
 
-        constexpr Data() : dummy(0) {}
+        ~Location_Union(void) noexcept {}
     } u;
 
-    constexpr Asset_Location() : type(Asset_Location_Type::None) {}
+    ~Asset_Location(void) noexcept {}
 };
 
 size_t get_file_size(FILE *file);
@@ -771,10 +566,10 @@ size_t get_file_size(FILE *file);
 bool make_asset_store_from_folder(Asset_Store *store, const char *folder_path);
 bool asset_store_destroy(Asset_Store *store);
 
-struct Image {
+struct Texture {
     int width;
     int height;
-    Image_Color_Layout layout;
+    Color_Layout layout;
 
     GLuint unit;
     GLuint id;
@@ -820,13 +615,15 @@ struct Asset {
     std::atomic_flag should_reload;
 
     union {
-        Image image;
+        Texture texture;
         Shader shader;
         Tilemap tilemap;
     } u;
+
+    ~Asset(void) noexcept {}
 };
 
-Asset *asset_load(Asset_Store *store, Asset_Type type, const char *file);
+Asset *asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path);
 
 // helper
 bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, Tilemap *tilemap);
@@ -837,7 +634,7 @@ bool shader_bind(Shader *shader);
 bool asset_from_bitmap_picture(Asset *asset, Bitmap_Picture *picture);
 
 bool asset_reload(Asset_Store *store, Asset *asset);
-bool asset_unload_content(Asset_Store *store, Asset *asset);
+bool asset_unload(Asset_Store *store, Asset *asset);
 
 struct Shader_Compile_Result {
     GLuint shader_program_id;
@@ -1018,7 +815,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     //
     // Atlas:
     //
-    Asset *atlas_asset = asset_load(&store, Asset_Type::Image, R"(P:\garden\assets\garden_atlas.bmp)");
+    Asset *atlas_asset = asset_load(&store, Asset_Type::Texture, R"(P:\garden\assets\garden_atlas.bmp)");
     assert(atlas_asset);
     assert(asset_image_send_to_gpu(&store, atlas_asset, 0, basic_shader));
 
@@ -1041,7 +838,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     // Setup tilemap atlas:
     //
     Asset *tilemap_asset = asset_load(&store, Asset_Type::Tilemap, R"(P:\garden\assets\demo.tilemap.tp)");
-    assert(asset_image_send_to_gpu(&store, tilemap_asset->u.tilemap.image.u.asset, 1, basic_shader));
+    assert(asset_image_send_to_gpu(&store, tilemap_asset->u.tilemap.texture_asset, 1, basic_shader));
 
     Vertex_Buffer tilemap_vertex_buffer{};
     assert(make_vertex_buffer(&tilemap_vertex_buffer));
@@ -1066,7 +863,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     size_t tilemap_vertexes_buffer_size = tilemap_tiles_count * TILEMAP_VERTEX_COUNT_PER_TILE * sizeof(Vertex);
     Vertex *tilemap_vertexes = static_cast<Vertex *>(mm::allocate(tilemap_vertexes_buffer_size)); // TODO: Free later
     size_t tilemap_vertexes_count = 0;
-    Image *tilemap_texture = &tilemap->image.u.asset->u.image;
+    Texture *tilemap_texture = &tilemap->texture_asset->u.texture;
 
     Atlas tilemap_atlas{
         #if 1
@@ -1231,8 +1028,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
                 assert(asset_reload(&store, it));
 
-                if (it->type == Asset_Type::Image) {
-                    assert(asset_image_send_to_gpu(&store, it, it->u.image.unit, basic_shader));
+                if (it->type == Asset_Type::Texture) {
+                    assert(asset_image_send_to_gpu(&store, it, it->u.texture.unit, basic_shader));
                 }
 
                 if (it->type == Asset_Type::Shader) {
@@ -1255,7 +1052,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                     GLuint atlas_texture_uniform_loc = glGetUniformLocation(shader->program_id, "u_texture");
                     assert(atlas_texture_uniform_loc != -1);
 
-                    glUniform1i(atlas_texture_uniform_loc, atlas_asset->u.image.unit);
+                    glUniform1i(atlas_texture_uniform_loc, atlas_asset->u.texture.unit);
                 }
 
                 it->should_reload.clear();
@@ -1286,10 +1083,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 assert(bind_vertex_buffer(&tilemap_vertex_buffer));
 
                 /// XXX
-                glBindTexture(GL_TEXTURE_2D, tilemap_asset->u.tilemap.image.u.asset->u.image.id);
+                glActiveTexture(GL_TEXTURE0 + tilemap_asset->u.tilemap.texture_asset->u.texture.unit);
                 GLuint texture_uniform_loc = glGetUniformLocation(basic_shader->program_id, "u_texture");
                 assert(texture_uniform_loc != -1);
-                glUniform1i(texture_uniform_loc, tilemap_asset->u.tilemap.image.u.asset->u.image.unit);
+                glUniform1i(texture_uniform_loc, tilemap_asset->u.tilemap.texture_asset->u.texture.unit);
 
                 size_t vertex_buffer_size = tilemap_vertexes_count * sizeof(*tilemap_vertexes);
                 glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, tilemap_vertexes, GL_DYNAMIC_DRAW);
@@ -1300,10 +1097,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 assert(bind_vertex_buffer(&entity_vertex_buffer));
 
                 /// XXX
-                glBindTexture(GL_TEXTURE_2D, atlas_asset->u.image.id);
+                glActiveTexture(GL_TEXTURE0 + atlas_asset->u.texture.unit);
                 GLuint texture_uniform_loc = glGetUniformLocation(basic_shader->program_id, "u_texture");
                 assert(texture_uniform_loc != -1);
-                glUniform1i(texture_uniform_loc, atlas_asset->u.image.unit);
+                glUniform1i(texture_uniform_loc, atlas_asset->u.texture.unit);
 
                 size_t vertex_buffer_size = platform_context.vertexes_count * sizeof(*platform_context.vertexes);
                 glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, platform_context.vertexes, GL_DYNAMIC_DRAW);
@@ -1955,13 +1752,13 @@ load_bitmap_picture_pixel_data_from_file(Bitmap_Picture *picture, FILE *file)
 }
 
 void
-gl_make_texture_from_image(void *data, size32_t width, size32_t height, Image_Color_Layout layout, GLenum internal_format)
+gl_make_texture_from_pixels(void *pixels, size32_t width, size32_t height, Color_Layout layout, GLenum internal_format)
 {
-    assert(layout == Image_Color_Layout::BGRA_U8);
+    assert(layout == Color_Layout::BGRA_U8);
 
     GLenum format = 0, type = 0;
 
-    if (layout == Image_Color_Layout::BGRA_U8) {
+    if (layout == Color_Layout::BGRA_U8) {
         format = GL_BGRA;
         type = GL_UNSIGNED_BYTE;
     }
@@ -1969,7 +1766,7 @@ gl_make_texture_from_image(void *data, size32_t width, size32_t height, Image_Co
     // TODO(gr3yknigh1): Need to add support for more formats [2025/02/23]
 
     assert(format && type); // NOTE(gr3yknigh1): Should not be zero [2025/02/23]
-    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, type, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, type, pixels);
 }
 
 bool
@@ -2007,7 +1804,6 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
 
             // TODO(gr3yknigh1): Add proper error report mechanizm. Error message in window, for example. [2025/02/24]
             assert(lexer_check_peeked( &lexer, s_tilemap_image_bmp_format ));
-            tilemap->image.format = Tilemap_Image_Format::Bitmap;
             lexer_advance(&lexer, (int32_t)s_tilemap_image_bmp_format.length);
 
             lexer_skip_whitespace(&lexer);
@@ -2061,8 +1857,8 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
 
     // TODO(gr3yknigh1): Generalize format validation [2025/02/24]
 
-    tilemap->image.u.asset = asset_load(store, Asset_Type::Image, tilemap_image_path);
-    assert(tilemap->image.u.asset);
+    tilemap->texture_asset = asset_load(store, Asset_Type::Texture, tilemap_image_path);
+    assert(tilemap->texture_asset);
 
     mm::deallocate(tilemap_image_path);
 
@@ -2483,11 +2279,11 @@ asset_store_destroy(Asset_Store *store)
 }
 
 Asset *
-asset_load(Asset_Store *store, Asset_Type type, const char *file)
+asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
 {
     // TODO(gr3yknigh1): Handle errors and mark asset as failed to load: Asset_State::LoadFailure [2025/03/10]
 
-    assert(store && file);
+    assert(store && !file_path.empty());
 
     Asset *asset = mm::allocate_struct<Asset>(&store->asset_pool);
     assert(asset);
@@ -2496,13 +2292,13 @@ asset_load(Asset_Store *store, Asset_Type type, const char *file)
 
     Asset_Location *location = &asset->location;
     location->type          = Asset_Location_Type::File;
-    location->u.file.path   = file /*asset_store_resolve_file(file)*/;
+    location->u.file.path   = Str8(file_path.data, file_path.length) /*asset_store_resolve_file(file)*/;
     location->u.file.handle = fopen(location->u.file.path.data, "r");
     assert(location->u.file.handle);
 
     location->u.file.size   = get_file_size(location->u.file.handle);
 
-    if (asset->type == Asset_Type::Image) {
+    if (asset->type == Asset_Type::Texture) {
         // NOTE(gr3yknigh1): Assume that file is path to BMP image [2025/03/10]
         Bitmap_Picture picture;
         assert(load_bitmap_picture_info_from_file(&picture, location->u.file.handle));
@@ -2561,7 +2357,7 @@ asset_reload(Asset_Store *store, Asset *asset)
     assert(store && asset);
 
     if (asset->state == Asset_State::Loaded) {
-        assert(asset_unload_content(store, asset));
+        assert(asset_unload(store, asset));
     }
 
     if (asset->location.type == Asset_Location_Type::File) {
@@ -2572,7 +2368,7 @@ asset_reload(Asset_Store *store, Asset *asset)
             assert(asset->location.u.file.handle);
         }
 
-        if (asset->type == Asset_Type::Image) {
+        if (asset->type == Asset_Type::Texture) {
             Bitmap_Picture picture;
             assert(load_bitmap_picture_info_from_file(&picture, asset->location.u.file.handle));
 
@@ -2614,23 +2410,25 @@ asset_from_bitmap_picture(Asset *asset, Bitmap_Picture *picture)
     //
     // Copy image data to more generalized structure
     //
-    asset->u.image.width = picture->dib_header.width;
-    asset->u.image.height = picture->dib_header.height;
+    asset->u.texture.width = picture->dib_header.width;
+    asset->u.texture.height = picture->dib_header.height;
 
-    asset->u.image.layout = Image_Color_Layout::Nothing;
+    asset->u.texture.layout = Color_Layout::Nothing;
+
     if (picture->dib_header.compression_method ==  Bitmap_Picture_Compression_Method::Bitfields) {
-        asset->u.image.layout = Image_Color_Layout::BGRA_U8;
+        asset->u.texture.layout = Color_Layout::BGRA_U8;
     }
-    assert(asset->u.image.layout != Image_Color_Layout::Nothing);
 
-    asset->u.image.pixels.data = picture->u.data;
+    assert(asset->u.texture.layout != Color_Layout::Nothing);
+
+    asset->u.texture.pixels.data = picture->u.data;
 
     return true;
 }
 
 
 bool
-asset_unload_content(Asset_Store *store, Asset *asset)
+asset_unload(Asset_Store *store, Asset *asset)
 {
     assert(store && asset);
 
@@ -2638,8 +2436,8 @@ asset_unload_content(Asset_Store *store, Asset *asset)
 
     bool result = true;
 
-    if (asset->type == Asset_Type::Image) {
-        result = mm::reset(&store->asset_content, asset->u.image.pixels.data );
+    if (asset->type == Asset_Type::Texture) {
+        result = mm::reset(&store->asset_content, asset->u.texture.pixels.data );
     } else if (asset->type == Asset_Type::Shader) {
         result = mm::reset(&store->asset_content, asset->u.shader.source_code);
     } else {
@@ -2806,30 +2604,33 @@ compile_shader(char *source_code, size_t file_size)
 bool
 asset_image_send_to_gpu(Asset_Store *store, Asset *asset, int unit, Shader *shader)
 {
-    assert(asset->type == Asset_Type::Image);
+    assert(asset->type == Asset_Type::Texture);
 
-    asset->u.image.unit = unit;
-    glActiveTexture(GL_TEXTURE0 + asset->u.image.unit);
-    glGenTextures(1, &asset->u.image.id);
-    glBindTexture(GL_TEXTURE_2D, asset->u.image.id);
+    asset->u.texture.unit = unit;
+    glActiveTexture(GL_TEXTURE0 + asset->u.texture.unit);
+    if (asset->u.texture.id) {
+        glDeleteTextures(1, &asset->u.texture.id);
+    }
+    glGenTextures(1, &asset->u.texture.id);
+    glBindTexture(GL_TEXTURE_2D, asset->u.texture.id);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    gl_make_texture_from_image(
-        asset->u.image.pixels.data, asset->u.image.width, asset->u.image.height,
-        asset->u.image.layout, GL_RGBA8);
+    gl_make_texture_from_pixels(
+        asset->u.texture.pixels.data, asset->u.texture.width, asset->u.texture.height,
+        asset->u.texture.layout, GL_RGBA8);
     glGenerateMipmap(GL_TEXTURE_2D);
 
     // NOTE: After loading atlas in GPU, we do not need to keep it in RAM.
-    assert(asset_unload_content(store, asset));
+    assert(asset_unload(store, asset));
 
     if (shader) {
         GLint texture_uniform_loc = glGetUniformLocation(shader->program_id, "u_texture");
         assert(texture_uniform_loc != -1);
 
-        glUniform1i(texture_uniform_loc, asset->u.image.unit);
+        glUniform1i(texture_uniform_loc, asset->u.texture.unit);
     }
 
     return true;
@@ -2863,4 +2664,70 @@ int
 get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y)
 {
     return width * y + x;
+}
+
+
+struct Work_Result;
+
+enum struct Error_Code {
+    ok,
+    generic_error,
+    // ...
+    shader_compilation_error = 32,
+    shader_linkage_error = 32,
+};
+
+struct Debug_Location {
+    const char *file;
+    int lineno;
+};
+
+struct Error_Report {
+    Error_Code code;
+
+    Debug_Location location;
+};
+
+struct Error_Reporter {
+    Fixed_Array<Error_Report, 64> reports;
+
+    bool
+    has_errors(void) noexcept
+    {
+        return !reports->empty();
+    }
+};
+
+/* TODO(gr3yknigh1): Thing more about the name of this function... [2025/04/07] */
+void
+handle_reports(Error_Reporter *reporter)
+{
+    for (Error_Report &report : reporter->reports) {
+    }
+}
+
+void
+_start(void)
+{
+    Static_Arena arena{/**/};
+    Error_Reporter reporter{/**/};
+
+    Work_Result *result = make_work(&arena, 1, 2, &reporter);
+    if (reporter->has_errors()) {
+        handle_reports(&reporter);
+        return;
+    }
+    Work_Result *result0 = make_work(&arena, 1, 2, nullptr); // explicitly ignoring errors
+}
+
+Work_Result *
+make_work(Static_Arena *arena, int p0, int p1, Error_Reporter *reporter)
+{
+    assert(arena);
+}
+
+Work_Result *
+make_work2(Static_Arena *arena, int p0, int p1, Error_Reporter *reporter)
+{
+    assert(arena && reporter); // require handle the errors
 }
