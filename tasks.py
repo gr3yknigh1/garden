@@ -50,7 +50,7 @@ glm_library: F[[str], str] = lambda build_type: join(glm_output_dir(build_type),
 #
 
 @define_task()
-def build(c: Context, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False, enable_crt_alloc=False):
+def build(c: Context, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False):
     """Builds entire project.
     """
     if clean:
@@ -100,17 +100,19 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
         GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
     )
 
+    common_sources = [
+        c.join(code_dir, "garden_memory.cpp"),
+        c.join(code_dir, "garden_platform.cpp"),
+    ]
+
     if build_type == "Debug":
         common_defines["GARDEN_BUILD_TYPE_DEBUG"] = 1
 
     if build_type == "Release":
         common_defines["GARDEN_BUILD_TYPE_RELEASE"] = 1
 
-    if enable_crt_alloc:
-        common_defines.update(**dict(GARDEN_USE_CRT_ALLOCATIONS=1))
-
     msvc.compile(
-        c, [ join(code_dir, "garden.cpp"), join(code_dir, "garden_platform.cpp") ], # TODO(gr3yknigh1): Move garden_platform.cpp away in library [2025/03/03]
+        c, [ join(code_dir, "garden.cpp"), *common_sources ], # TODO(gr3yknigh1): Move garden_platform.cpp away in library [2025/03/03]
         output=join(output_dir(build_type), GAMEPLAY_DLL_NAME),
         includes=[
             join(project_dir, "glad"),
@@ -129,9 +131,9 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
 
     garden_output_exe = c.join(output_dir(build_type), "garden.exe")
     garden_platform_sources = [
-        c.join(code_dir, "garden_platform.cpp"),
         c.join(project_dir, "glad", "glad.c"),
-        c.join(project_dir, "glad", "glad_wgl.c")
+        c.join(project_dir, "glad", "glad_wgl.c"),
+        *common_sources
     ]
 
     if not is_file_busy(garden_output_exe):
