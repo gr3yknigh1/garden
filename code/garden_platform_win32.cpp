@@ -2667,6 +2667,7 @@ get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y)
 }
 
 
+#if 0
 struct Work_Result;
 
 enum struct Error_Code {
@@ -2731,3 +2732,5 @@ make_work2(Static_Arena *arena, int p0, int p1, Error_Reporter *reporter)
 {
     assert(arena && reporter); // require handle the errors
 }
+
+#endif
