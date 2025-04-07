@@ -38,7 +38,6 @@ main(void)
 
     // NOTE: Passing to fragment shader
     color = unpack_rgba_color(layout_color);
-    color.rb = vec2(1, 1);
     texture_coords = layout_texture_coords;
 }
 
@@ -55,5 +54,7 @@ uniform sampler2D u_texture;
 void
 main(void)
 {
-    FragColor = texture(u_texture, texture_coords) * color;
+    vec4 result = texture(u_texture, texture_coords);
+    // result *= color;
+    FragColor = result;
 }
