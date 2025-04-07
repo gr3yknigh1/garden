@@ -13,10 +13,6 @@
 #include <stdio.h>  // puts, printf, FILE, fopen, freopen, fseek, fclose
 #include <ctype.h>  // isspace
 
-#if defined(GARDEN_USE_CRT_ALLOCATIONS)
-    #include <crtdbg.h>
-#endif
-
 #if !defined(UNICODE)
     #define UNICODE
 #endif
@@ -203,10 +199,7 @@ glm::mat4 camera_get_projection_matrix(Camera *camera, int viewport_width, int v
 // OpenGL API wrappers
 //
 GLuint compile_shader_from_str8(const char *string, GLenum type);
-GLuint compile_shader_from_str8(mm::Arena *arena, const char *string, GLenum type);
-GLuint compile_shader_from_file(mm::Arena *arena, const char *file_path, GLenum type);
 GLuint link_shader_program(GLuint vertex_shader, GLuint fragment_shader);
-GLuint link_shader_program(mm::Arena *arena, GLuint vertex_shader, GLuint fragment_shader);
 
 struct Vertex_Buffer_Attribute {
     bool is_normalized;
@@ -233,7 +226,7 @@ struct Vertex_Buffer_Layout {
 //
 // @return True if allocation of the array was succesfull. Otherwise buy more RAM.
 //
-bool make_vertex_buffer_layout(mm::Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity);
+bool make_vertex_buffer_layout(Static_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity);
 
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, size_t size);
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_float  (Vertex_Buffer_Layout *layout, unsigned int count);
@@ -375,9 +368,6 @@ struct Bitmap_Picture {
 };
 #pragma pack(pop)
 
-bool load_bitmap_picture_from_file(mm::Arena *arena, Bitmap_Picture *picture, const char *file_path);
-bool load_bitmap_picture_from_file(mm::Arena *arena, Bitmap_Picture *picture, FILE *file);
-
 bool load_bitmap_picture_info_from_file(Bitmap_Picture *picture, FILE *file);
 bool load_bitmap_picture_pixel_data_from_file(Bitmap_Picture *picture, FILE *file);
 
@@ -423,8 +413,6 @@ struct Tilemap {
 
     Asset *texture_asset;
 };
-
-Tilemap *load_tilemap_from_file(mm::Arena *arena, const char *file_path);
 
 #define WATCH_EXT_NONE MAKE_FLAG(0)
 #define WATCH_EXT_BMP  MAKE_FLAG(1)
@@ -499,8 +487,8 @@ enum struct Asset_Store_Place {
 struct Asset_Store {
     static constexpr uint16_t max_asset_count = 1024;
 
-    mm::Block_Allocator asset_pool;
-    mm::Block_Allocator asset_content;
+    Block_Allocator asset_pool;
+    Block_Allocator asset_content;
 
     // TODO(gr3yknigh1): Add support for using `store image-file` (single file) [2025/03/06]
     // TODO(gr3yknigh1): Support for utf-8 or wide paths? [2025/03/06]
@@ -514,7 +502,7 @@ struct Asset_Store {
 
 #if !defined(FOR_EACH_ASSET)
     #define FOR_EACH_ASSET(IT, ASSET_STORE_PTR) \
-        for (Asset *IT = static_cast<Asset *>(mm::first(&(ASSET_STORE_PTR)->asset_pool)); IT != nullptr; IT = static_cast<Asset *>(mm::next(&(ASSET_STORE_PTR)->asset_pool, static_cast<void *>(IT)) ))
+        for (Asset *IT = static_cast<Asset *>(first(&(ASSET_STORE_PTR)->asset_pool)); IT != nullptr; IT = static_cast<Asset *>(next(&(ASSET_STORE_PTR)->asset_pool, static_cast<void *>(IT)) ))
 #endif
 
 struct Reload_Context {
@@ -524,13 +512,6 @@ struct Reload_Context {
     // NOTE(gr3yknigh1): Found no place for this. Think about it later, if it becomes a problem [2025/03/10]
     //
     std::atomic_flag should_reload_gameplay;
-};
-
-struct Buffer_View {
-    mm::byte *data;
-    size_t size;
-
-    constexpr Buffer_View() : data(nullptr), size(0) {}
 };
 
 enum struct Asset_Location_Type {
@@ -772,7 +753,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     assert(make_vertex_buffer(&entity_vertex_buffer));
     assert(bind_vertex_buffer(&entity_vertex_buffer));
 
-    mm::Arena page_arena = mm::make_arena(1024);
+    Static_Arena page_arena = make_static_arena(1024);
 
     Vertex_Buffer_Layout vertex_buffer_layout;
     assert(make_vertex_buffer_layout(&page_arena, &vertex_buffer_layout, 4));
@@ -783,7 +764,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     vertex_buffer_layout_build_attrs(&vertex_buffer_layout);
 
-    mm::arena_reset(&page_arena);
+    reset(&page_arena);
 
     //
     // Media:
@@ -819,8 +800,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     assert(atlas_asset);
     assert(asset_image_send_to_gpu(&store, atlas_asset, 0, basic_shader));
 
-    mm::Arena asset_arena = mm::make_arena(1024000);  // @cleanup
-
     //
     // Hot-reload: Setup
     //
@@ -853,7 +832,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     vertex_buffer_layout_build_attrs(&tilemap_vertex_buffer_layout);
 
-    mm::arena_reset(&page_arena);
+    reset(&page_arena);
 
     Tilemap *tilemap = &tilemap_asset->u.tilemap;
 
@@ -861,7 +840,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     float tilemap_position_x = 100, tilemap_position_y = 100;
     size_t tilemap_tiles_count = tilemap->row_count * tilemap->col_count;
     size_t tilemap_vertexes_buffer_size = tilemap_tiles_count * TILEMAP_VERTEX_COUNT_PER_TILE * sizeof(Vertex);
-    Vertex *tilemap_vertexes = static_cast<Vertex *>(mm::allocate(tilemap_vertexes_buffer_size)); // TODO: Free later
+    Vertex *tilemap_vertexes = static_cast<Vertex *>(allocate(tilemap_vertexes_buffer_size)); // TODO: Free later
     size_t tilemap_vertexes_count = 0;
     Texture *tilemap_texture = &tilemap->texture_asset->u.texture;
 
@@ -917,8 +896,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     ZERO_STRUCT(&platform_context);
 
     platform_context.camera = &camera;
-    platform_context.persist_arena = mm::make_arena(1024);
-    platform_context.vertexes_arena = mm::make_arena(sizeof(Vertex) * 1024);
+    platform_context.persist_arena = make_static_arena(1024);
+    platform_context.vertexes_arena = make_static_arena(sizeof(Vertex) * 1024);
 
     Game_Context *game_context = reinterpret_cast<Game_Context *>(gameplay.on_init(&platform_context));
     gameplay.on_load(&platform_context, game_context);
@@ -1107,7 +1086,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
 
                 platform_context.vertexes_count = 0;
-                mm::arena_reset(&platform_context.vertexes_arena);
+                reset(&platform_context.vertexes_arena);
             }
 
             assert(SwapBuffers(window_device_context));
@@ -1123,10 +1102,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     glDeleteProgram(basic_shader->program_id); // @cleanup Replace with asset_shader_free
 
-    free_arena(&asset_arena);
-    free_arena(&page_arena);
-    free_arena(&platform_context.vertexes_arena);
-    free_arena(&platform_context.persist_arena);
+    destroy(&page_arena);
+    destroy(&platform_context.vertexes_arena);
+    destroy(&platform_context.persist_arena);
 
     assert(FreeLibrary(opengl_module));
     CloseWindow(window); // TODO(gr3yknigh1): why it fails? [2025/02/23]
@@ -1285,32 +1263,6 @@ win32_init_opengl_context(HDC device_context)
     return render_context;
 }
 
-GLuint
-compile_shader_from_file(mm::Arena *arena, const char *file_path, GLenum type)
-{
-    // TODO(gr3yknigh1): Check for path existens and that it is file [2024/11/24]
-
-    FILE *file = fopen(file_path, "r");
-    assert(file);
-
-    size_t file_size = get_file_size(file);
-    assert(file_size);
-
-    size_t string_buffer_size = file_size + 1;
-
-    char *string_buffer = static_cast<char *>(mm::arena_alloc_zero(arena, string_buffer_size, ARENA_ALLOC_POPABLE));
-    assert(string_buffer);
-
-    fread(string_buffer, string_buffer_size, 1, file);
-    fclose(file);
-
-    GLuint id = compile_shader_from_str8(arena, string_buffer, type);
-
-    assert(arena_pop(arena, string_buffer));
-
-    return id;
-}
-
 GLenum
 gl_convert_shader_module_type_to_gl_enum(Shader_Module_Type type) {
 
@@ -1346,43 +1298,14 @@ compile_shader_from_str8(const char *string, Shader_Module_Type type)
         assert(log_length);
 
         size_t log_buffer_size = log_length + 1;
-        char *log_buffer = static_cast<char *>(mm::allocate(log_buffer_size));
+        char *log_buffer = static_cast<char *>(allocate(log_buffer_size));
         assert(log_buffer);
 
         glGetShaderInfoLog(id, (GLsizei)log_buffer_size, 0, log_buffer);
 
         assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
         /* DIE_MF("Failed to compile OpenGL shader! %s", logBuffer); */
-        mm::deallocate(log_buffer);
-    }
-
-    return id;
-}
-
-GLuint
-compile_shader_from_str8(mm::Arena *arena, const char *string, GLenum type)
-{
-    GLuint id = glCreateShader(type);
-    glShaderSource(id, 1, &string, 0);
-    glCompileShader(id);
-
-    GLint status = GL_TRUE;
-    glGetShaderiv(id, GL_COMPILE_STATUS, &status);
-
-    if (status == GL_FALSE) {
-        GLint log_length = 0;
-        glGetShaderiv(id, GL_INFO_LOG_LENGTH, &log_length);
-        assert(log_length);
-
-        size_t log_buffer_size = log_length + 1;
-        char *log_buffer = static_cast<char *>(mm::arena_alloc_zero(arena, log_buffer_size, ARENA_ALLOC_POPABLE));
-        assert(log_buffer);
-
-        glGetShaderInfoLog(id, (GLsizei)log_buffer_size, 0, log_buffer);
-
-        assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
-        /* DIE_MF("Failed to compile OpenGL shader! %s", logBuffer); */
-        mm::arena_pop(arena, log_buffer);
+        deallocate(log_buffer);
     }
 
     return id;
@@ -1407,58 +1330,27 @@ link_shader_program(GLuint vertex_shader, GLuint fragment_shader)
         glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
 
         size_t log_buffer_size = log_length + 1;
-        char *log_buffer = static_cast<char *>(mm::allocate(log_buffer_size));
+        char *log_buffer = static_cast<char *>(allocate(log_buffer_size));
         assert(log_buffer);
 
         glGetProgramInfoLog(id, (GLsizei)log_buffer_size, NULL, log_buffer);
 
         assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
         /* DIE_MF("Failed to link OpenGL program! %s", logBuffer); */
-        mm::deallocate(log_buffer);
+        deallocate(log_buffer);
     }
 
     return id;
 }
 
-GLuint
-link_shader_program(mm::Arena *arena, GLuint vertex_shader, GLuint fragment_shader)
-{
-    GLuint id = glCreateProgram();
-
-    glAttachShader(id, vertex_shader);
-    glAttachShader(id, fragment_shader);
-    glLinkProgram(id);
-
-    glValidateProgram(id);
-
-    GLint status = GL_TRUE;
-    glGetProgramiv(id, GL_LINK_STATUS, &status);
-
-    if (status == GL_FALSE) {
-        GLint log_length;
-        glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
-
-        size_t log_buffer_size = log_length + 1;
-        char *log_buffer = static_cast<char *>(mm::arena_alloc_zero(arena, log_buffer_size, ARENA_ALLOC_POPABLE));
-        assert(log_buffer);
-
-        glGetProgramInfoLog(id, (GLsizei)log_buffer_size, NULL, log_buffer);
-
-        assert(false); // TODO(i.akkuzin): Implement DIE macro [2025/02/08]
-        /* DIE_MF("Failed to link OpenGL program! %s", logBuffer); */
-        mm::arena_pop(arena, log_buffer);
-    }
-
-    return id;
-}
 
 bool
-make_vertex_buffer_layout(mm::Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity)
+make_vertex_buffer_layout(Static_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity)
 {
     ZERO_STRUCT(layout);
 
-    layout->attributes = static_cast<Vertex_Buffer_Attribute *>(
-        mm::arena_alloc_zero(arena, attributes_capacity * sizeof(Vertex_Buffer_Attribute), ARENA_ALLOC_BASIC));
+    layout->attributes = allocate_structs<Vertex_Buffer_Attribute>(
+        arena, attributes_capacity, ALLOCATE_ZERO_MEMORY);
 
     if (layout->attributes == nullptr) {
         return false;
@@ -1693,42 +1585,6 @@ win32_is_vk_pressed(int vk)
     return result;
 }
 
-
-bool
-load_bitmap_picture_from_file(mm::Arena *arena, Bitmap_Picture *picture, const char *file_path)
-{
-    FILE *file = fopen(file_path, "r");
-
-    if (file == nullptr) {
-        return false;
-    }
-
-    bool result = load_bitmap_picture_from_file(arena, picture, file);
-
-    fclose(file);
-
-    return result;
-}
-
-bool
-load_bitmap_picture_from_file(mm::Arena *arena, Bitmap_Picture *picture, FILE *file)
-{
-    if (!load_bitmap_picture_info_from_file(picture, file)) {
-        return false;
-    }
-
-    picture->u.data = mm::arena_alloc_zero(arena, picture->header.file_size, ARENA_ALLOC_BASIC);
-    if (picture->u.data == nullptr) {
-        return false;
-    }
-
-    if (!load_bitmap_picture_pixel_data_from_file(picture, file)) {
-        return false;
-    }
-
-    return true;
-}
-
 bool
 load_bitmap_picture_info_from_file(Bitmap_Picture *picture, FILE *file)
 {
@@ -1821,7 +1677,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
             // NOTE(gr3yknigh1): This can be fixed with adding stage with Token generation, like
             // proper lexers does [2025/02/26]
             tilemap->indexes_count = tilemap->row_count * tilemap->col_count;
-            tilemap->indexes = static_cast<int *>(mm::allocate(tilemap->indexes_count * sizeof(*tilemap->indexes)));
+            tilemap->indexes = static_cast<int *>(allocate(tilemap->indexes_count * sizeof(*tilemap->indexes)));
 
             continue;
         }
@@ -1851,8 +1707,8 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
     // TODO(gr3yknigh1): Factor this out [2025/02/24]
     assert(tilemap_image_path_view.length && tilemap_image_path_view.data);
 
-    char *tilemap_image_path = (char *)mm::allocate(tilemap_image_path_view.length + 1);
-    mm::zero_memory(tilemap_image_path, tilemap_image_path_view.length + 1);
+    char *tilemap_image_path = (char *)allocate(tilemap_image_path_view.length + 1);
+    zero_memory(tilemap_image_path, tilemap_image_path_view.length + 1);
     assert(str8_view_copy_to_nullterminated(tilemap_image_path_view, tilemap_image_path, tilemap_image_path_view.length + 1));
 
     // TODO(gr3yknigh1): Generalize format validation [2025/02/24]
@@ -1860,7 +1716,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
     tilemap->texture_asset = asset_load(store, Asset_Type::Texture, tilemap_image_path);
     assert(tilemap->texture_asset);
 
-    mm::deallocate(tilemap_image_path);
+    deallocate(tilemap_image_path);
 
     return tilemap;
 }
@@ -2132,7 +1988,7 @@ watch_thread_worker(PVOID param)
     assert(file_full_path_buffer && "Buy more RAM");
 
     // NOTE(gr3yknigh1): Clunky! [2025/03/10]
-    mm::copy_memory(file_full_path_buffer, static_cast<const void *>(context->target_dir), target_dir_buffer_size);
+    copy_memory(file_full_path_buffer, static_cast<const void *>(context->target_dir), target_dir_buffer_size);
 
 
     while (!context->should_stop.test()) {
@@ -2151,7 +2007,7 @@ watch_thread_worker(PVOID param)
             // TODO(gr3yknigh1): Replace with some kind of Path_Join function [2025/03/10]
             static_cast<wchar_t *>(file_full_path_buffer)[target_dir_length] = path16_get_separator();
             size_t separator_size = sizeof(wchar_t);
-            mm::copy_memory( static_cast<mm::byte *>(file_full_path_buffer) + target_dir_buffer_size + separator_size, static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
+            copy_memory( get_offset(file_full_path_buffer, target_dir_buffer_size + separator_size), static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
 
             Str16_View file_name(static_cast<wchar_t *>(file_full_path_buffer), target_dir_length + 1 + changed_file_relative_path_length);
             //                                                                                    ^^^
@@ -2254,13 +2110,13 @@ make_asset_store_from_folder(Asset_Store *store, const char *folder_path)
 {
     assert(store && folder_path);
 
-    mm::zero_struct(store);
+    zero_struct(store);
 
     store->place = Asset_Store_Place::Folder;
-    store->asset_pool = mm::make_block_allocator(Asset_Store::max_asset_count, sizeof(Asset), sizeof(Asset), Asset_Store::max_asset_count);
+    store->asset_pool = make_block_allocator(Asset_Store::max_asset_count, sizeof(Asset), sizeof(Asset), Asset_Store::max_asset_count);
     store->u.folder = folder_path;
 
-    store->asset_content = mm::make_block_allocator();
+    store->asset_content = make_block_allocator();
 
     return true;
 }
@@ -2270,10 +2126,10 @@ asset_store_destroy(Asset_Store *store)
 {
     assert(store);
 
-    assert(mm::destroy_block_allocator(&store->asset_pool));
-    assert(mm::destroy_block_allocator(&store->asset_content));
+    assert(destroy_block_allocator(&store->asset_pool));
+    assert(destroy_block_allocator(&store->asset_content));
 
-    mm::zero_struct(store);
+    zero_struct(store);
 
     return true;
 }
@@ -2285,7 +2141,7 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
 
     assert(store && !file_path.empty());
 
-    Asset *asset = mm::allocate_struct<Asset>(&store->asset_pool);
+    Asset *asset = allocate_struct<Asset>(&store->asset_pool, ALLOCATE_ZERO_MEMORY);
     assert(asset);
 
     asset->type = type;
@@ -2305,14 +2161,14 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
 
         // TODO(gr3yknigh1): Allocate less data, because file_size includes size of metadata [2025/03/10]
         //
-        picture.u.data = mm::allocate(&store->asset_content, picture.header.file_size);
+        picture.u.data = allocate(&store->asset_content, picture.header.file_size);
         assert(load_bitmap_picture_pixel_data_from_file(&picture, location->u.file.handle));
 
         assert(asset_from_bitmap_picture(asset, &picture));
     } else if (asset->type == Asset_Type::Shader) {
 
-        asset->u.shader.source_code = static_cast<char *>(mm::allocate(&store->asset_content, location->u.file.size));
-        mm::zero_memory(asset->u.shader.source_code, location->u.file.size);
+        asset->u.shader.source_code = static_cast<char *>(allocate(&store->asset_content, location->u.file.size));
+        zero_memory(asset->u.shader.source_code, location->u.file.size);
         fread(asset->u.shader.source_code, location->u.file.size, 1, location->u.file.handle);
 
         Shader_Compile_Result result = compile_shader(asset->u.shader.source_code, location->u.file.size);
@@ -2331,14 +2187,14 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
     } else if (asset->type == Asset_Type::Tilemap) {
 
         size_t buffer_size = asset->location.u.file.size + 1;
-        void* buffer = mm::allocate(asset->location.u.file.size);
-        mm::zero_memory(buffer, buffer_size);
+        void* buffer = allocate(buffer_size);
+        zero_memory(buffer, buffer_size);
 
         fread(buffer, buffer_size - 1, 1, asset->location.u.file.handle);
 
         assert(load_tilemap_from_buffer(store, static_cast<char *>(buffer), buffer_size, &asset->u.tilemap));
 
-        mm::deallocate(buffer);
+        deallocate(buffer);
 
     } else {
         // TODO(gr3yknigh1): Handle an error [2025/04/06]
@@ -2375,7 +2231,7 @@ asset_reload(Asset_Store *store, Asset *asset)
             //
             // TODO(gr3yknigh1): Allocate less data, because file_size includes size of metadata [2025/03/10]
             //
-            picture.u.data = mm::allocate(&store->asset_content, picture.header.file_size);
+            picture.u.data = allocate(&store->asset_content, picture.header.file_size);
             assert(load_bitmap_picture_pixel_data_from_file(&picture, asset->location.u.file.handle));
 
             assert(asset_from_bitmap_picture(asset, &picture));
@@ -2383,8 +2239,8 @@ asset_reload(Asset_Store *store, Asset *asset)
 
         if (asset->type == Asset_Type::Shader) {
 
-            asset->u.shader.source_code = static_cast<char *>(mm::allocate(&store->asset_content, asset->location.u.file.size));
-            mm::zero_memory(asset->u.shader.source_code, asset->location.u.file.size);
+            asset->u.shader.source_code = static_cast<char *>(allocate(&store->asset_content, asset->location.u.file.size));
+            zero_memory(asset->u.shader.source_code, asset->location.u.file.size);
             fread(asset->u.shader.source_code, asset->location.u.file.size, 1, asset->location.u.file.handle);
 
             Shader_Compile_Result result = compile_shader(asset->u.shader.source_code, asset->location.u.file.size);
@@ -2437,9 +2293,9 @@ asset_unload(Asset_Store *store, Asset *asset)
     bool result = true;
 
     if (asset->type == Asset_Type::Texture) {
-        result = mm::reset(&store->asset_content, asset->u.texture.pixels.data );
+        result = reset(&store->asset_content, asset->u.texture.pixels.data );
     } else if (asset->type == Asset_Type::Shader) {
-        result = mm::reset(&store->asset_content, asset->u.shader.source_code);
+        result = reset(&store->asset_content, asset->u.shader.source_code);
     } else {
         result = false;
     }
@@ -2457,7 +2313,7 @@ bool make_watch_context(Watch_Context *context, void *parameter, const wchar_t *
 {
     assert(context);
 
-    mm::zero_struct(context);
+    zero_struct(context);
 
     context->should_stop.clear();
 
@@ -2581,20 +2437,20 @@ compile_shader(char *source_code, size_t file_size)
     assert(!vertex_source.empty() && !fragment_source.empty());
 
     // TODO(gr3yknigh1): Move to arena [2025/03/28]
-    char *vertex_source_buffer = static_cast<char *>(mm::allocate(vertex_source.length + 1));
-    mm::zero_memory(vertex_source_buffer, vertex_source.length + 1);
+    char *vertex_source_buffer = static_cast<char *>(allocate(vertex_source.length + 1));
+    zero_memory(vertex_source_buffer, vertex_source.length + 1);
     assert(str8_view_copy_to_nullterminated(vertex_source, vertex_source_buffer, vertex_source.length + 1));
     GLuint vertex_module_id = compile_shader_from_str8(vertex_source_buffer, Shader_Module_Type::Vertex);
     assert(vertex_module_id);
-    mm::deallocate(vertex_source_buffer);
+    deallocate(vertex_source_buffer);
 
     // TODO(gr3yknigh1): Move to arena [2025/03/28]
-    char *fragment_source_buffer = static_cast<char *>(mm::allocate(fragment_source.length + 1));
-    mm::zero_memory(fragment_source_buffer, fragment_source.length + 1);
+    char *fragment_source_buffer = static_cast<char *>(allocate(fragment_source.length + 1));
+    zero_memory(fragment_source_buffer, fragment_source.length + 1);
     assert(str8_view_copy_to_nullterminated(fragment_source, fragment_source_buffer, fragment_source.length + 1));
     GLuint fragment_module_id = compile_shader_from_str8(fragment_source_buffer, Shader_Module_Type::Fragment);
     assert(fragment_module_id);
-    mm::deallocate(fragment_source_buffer);
+    deallocate(fragment_source_buffer);
 
     Shader_Compile_Result result{};
     result.shader_program_id = link_shader_program(vertex_module_id, fragment_module_id);

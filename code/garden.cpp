@@ -47,7 +47,7 @@ void normalize_vector2f(float *x, float *y);
 extern "C" __declspec(dllexport) void *
 game_on_init(Platform_Context *platform)
 {
-    Game_Context *game = static_cast<Game_Context *>(mm::arena_alloc_zero(&platform->persist_arena, sizeof(game), 0));
+    Game_Context *game = static_cast<Game_Context *>(allocate(&platform->persist_arena, sizeof(game), 0));
 
     game->player_x = 20;
     game->player_y = 20;
@@ -92,7 +92,7 @@ game_on_draw(Platform_Context *platform, Game_Context *game, float delta_time)
     Color4 rect_color = { 255, 255, 255, 255  };
     Atlas atlas = { 32, 32 };
 
-    platform->vertexes = static_cast<Vertex *>(arena_alloc_zero(&platform->vertexes_arena, sizeof(Vertex) * 6, ARENA_ALLOC_BASIC));
+    platform->vertexes = allocate_structs<Vertex>(&platform->vertexes_arena, 6);
     platform->vertexes_count = generate_rect_with_atlas(platform->vertexes, game->player_x, game->player_y, game->player_w, game->player_h, game->atlas_location, &atlas, rect_color);
 }
 

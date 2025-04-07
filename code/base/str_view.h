@@ -183,13 +183,14 @@ str16_view_is_equals(const Str16_View a, const Str8_View b) noexcept
 
     // TODO(gr3yknigh1): Do vectorization [2025/01/03]
     for (size_t i = 0; i < a.length; ++i) {
-        const mm::byte *c16 = reinterpret_cast<const mm::byte *>(a.data + i);
+        // TODO(gr3yknigh1): Maybe make c16 be `Byte c16[2]` ? [2025/04/07]
+        const Byte *c16 = reinterpret_cast<const Byte *>(a.data + i);
 
         if (c16[1] != 0) {
             return false;
         }
 
-        mm::byte c8 = b.data[i];
+        Byte c8 = b.data[i];
 
         if (c16[0] != c8) {
             return false;

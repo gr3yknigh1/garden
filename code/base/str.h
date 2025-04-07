@@ -29,7 +29,7 @@ str8_copy_to(void *destination, const char *source, size_t source_length, size_t
     size_t index = 0;
 
     while (index < source_length && index < destination_size) {
-        static_cast<mm::byte *>(destination)[index] = source[index];
+        static_cast<Byte *>(destination)[index] = source[index];
         ++index;
     }
 }
@@ -56,9 +56,9 @@ public:
         if (data_ && length_) {
             size_t data_buffer_size = this->length + 1;
 
-            void *data_buffer = mm::allocate(data_buffer_size);
+            void *data_buffer = allocate(data_buffer_size);
             assert(data_buffer);
-            mm::zero_memory(data_buffer, data_buffer_size);
+            zero_memory(data_buffer, data_buffer_size);
 
             str8_copy_to(data_buffer, data_, this->length, data_buffer_size);
 
@@ -105,7 +105,7 @@ public:
     destroy(void) noexcept
     {
         if (this->data) {
-            mm::deallocate(static_cast<void *>(this->data));
+            deallocate(static_cast<void *>(this->data));
         }
         this->length = 0;
     }
