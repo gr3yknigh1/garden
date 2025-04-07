@@ -135,7 +135,7 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
     ]
 
     if not is_file_busy(garden_output_exe):
-        c.run("echo I: Compiling platform runtime...")
+        c.echo("I: Compiling platform runtime...")
 
         msvc.compile(
             c, garden_platform_sources,
@@ -157,6 +157,6 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
             only_preprocessor=only_preprocessor, unicode_support=True
         )
     else:
-        c.run("echo W: Skipping platform runtime because {} is busy...".format(garden_output_exe))
+        c.echo("W: Skipping platform runtime because {} is busy...".format(garden_output_exe))
 
     # link.exe topdown.obj /MACHINE:X64 /SUBSYSTEM:WINDOWS /Fe:topdown.exe
