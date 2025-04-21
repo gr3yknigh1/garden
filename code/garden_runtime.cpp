@@ -1,25 +1,76 @@
-
-#include "base/memory.h"
+//
+// FILE          code\garden_platform.cpp
+//
+// AUTHORS
+//               Ilya Akkuzin <gr3yknigh1@gmail.com>
+//
+// NOTICE        (c) Copyright 2025 by Ilya Akkuzin. All rights reserved.
+//
 
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 
-#if !defined(NOMINMAX)
-    #define NOMINMAX
+#include "garden_runtime.h"
+
+#if GARDEN_GAMEPLAY_CODE != 1
+    #if defined(_WIN32)
+        #include "garden_runtime_win32.cpp"
+    #else
+        #error "Unhandled platform! No runtime was included"
+    #endif
 #endif
 
-#include <Windows.h> // TODO(gr3yknigh1): Remove use of SYSTEM_INFO from `get_page_size`. Extract this function to 
-                     // platform-layer code [2025/04/07]
+Size
+generate_rect(Vertex *vertexes, F32 x, F32 y, F32 width, F32 height, Color4 color)
+{
+    Size c = 0;
 
-#if defined(near)
-    #undef near
-#endif
+    // bottom-left triangle
+    vertexes[c++] = {x + 0, y + 0, 0, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};          // bottom-left
+    vertexes[c++] = {x + width, y + 0, 1, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};      // bottom-right
+    vertexes[c++] = {x + width, y + height, 1, 1, pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
 
-#if defined(far)
-    #undef far
-#endif
+    // top-right triangle
+    vertexes[c++] = {x + 0, y + 0, 0, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};          // bottom-left
+    vertexes[c++] = {x + width, y + height, 1, 1, pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
+    vertexes[c++] = {x + 0, y + height, 0, 1, pack_rgba_to_int(color.r, color.g, color.b, color.a)};
+
+    return c;
+}
+
+// TODO(gr3yknigh1): Separate configuration at atlas and mesh size [2025/02/26]
+Size
+generate_rect_with_atlas(
+    Vertex *vertexes, F32 x, F32 y, F32 width, F32 height, Rect_F32 loc, Atlas *atlas, Color4 color)
+{
+    Size c = 0;
+
+    // bottom-left triangle
+    vertexes[c++] = {
+        x + 0, y + 0, (loc.x + 0) / atlas->x_pixel_count, (loc.y + 0) / atlas->y_pixel_count,
+        pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // bottom-left
+    vertexes[c++] = {
+        x + width, y + 0, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + 0) / atlas->y_pixel_count,
+        pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // bottom-right
+    vertexes[c++] = {
+        x + width, y + height, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count,
+        pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
+
+    // top-right triangle
+    vertexes[c++] = {
+        x + 0, y + 0, (loc.x + 0) / atlas->x_pixel_count, (loc.y + 0) / atlas->y_pixel_count,
+        pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // bottom-left
+    vertexes[c++] = {
+        x + width, y + height, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count,
+        pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
+    vertexes[c++] = {
+        x + 0, y + height, (loc.x + 0) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count,
+        pack_rgba_to_int(color.r, color.g, color.b, color.a)};
+
+    return c;
+}
 
 Static_Arena
 make_static_arena(Size capacity)
@@ -377,17 +428,6 @@ page_align(Size size)
     return result;
 }
 
-Size
-get_page_size(void)
-{
-    Size result;
-    SYSTEM_INFO systemInfo = {0};
-    GetSystemInfo(&systemInfo);
-    result = systemInfo.dwPageSize;
-    return result;
-}
-
-
 bool
 reset(Stack_View *view)
 {
@@ -437,4 +477,30 @@ next(Block_Allocator *allocator, void *data)
         }
     }
     return nullptr;
+}
+
+Size
+get_file_size(FILE *file)
+{
+    assert(file);
+
+    fseek(file, 0, SEEK_END);
+    Size file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    assert(file_size);
+
+    return file_size;
+}
+
+
+#include <Windows.h>
+
+Size
+get_page_size(void)
+{
+    Size result;
+    SYSTEM_INFO system_info = {0};
+    GetSystemInfo(&system_info);
+    result = system_info.dwPageSize;
+    return result;
 }

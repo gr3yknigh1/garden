@@ -24,7 +24,7 @@
     #undef near
 #endif
 
-#include "garden_platform.h"
+#include "garden_runtime.h"
 #include "garden_gameplay.h"
 
 
@@ -64,7 +64,7 @@ game_on_load(Platform_Context *platform, Game_Context *game)
 {
     (void)platform;
 
-    game->player_speed = 300;
+    game->player_speed = 100;
 }
 
 extern "C" __declspec(dllexport) void

@@ -50,7 +50,7 @@ glm_library: F[[str], str] = lambda build_type: join(glm_output_dir(build_type),
 #
 
 @define_task()
-def build(c: Context, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False):
+def build(c: Context, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False, perf=False):
     """Builds entire project.
     """
     if clean:
@@ -94,15 +94,24 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
 
     c.echo("I: Compiling game code...")
 
-    common_compile_flags = ["/MTd", "/Zi", "/std:c++20", "/W4", "/Od", "/GR-"]
+    common_compile_flags = [
+        "/MTd",
+        "/Zi",
+        "/std:c++20",
+        "/W4",
+        "/Od",   # Disables optimizations
+        "/GR-",  # Disables RTTI
+        "/nologo"
+    ]
     common_link_flags = ["/DEBUG:FULL"]
     common_defines: dict[str, Any] = dict(
         GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
     )
+    common_includes = [code_dir]
 
     common_sources = [
-        c.join(code_dir, "garden_memory.cpp"),
-        c.join(code_dir, "garden_platform.cpp"),
+        c.join(code_dir, "garden_runtime.cpp"),
+        c.join(code_dir, "media/aseprite.cpp"),
     ]
 
     if build_type == "Debug":
@@ -111,10 +120,14 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
     if build_type == "Release":
         common_defines["GARDEN_BUILD_TYPE_RELEASE"] = 1
 
+    if perf:
+        common_defines["PERF_ENABLED"] = 1
+
     msvc.compile(
-        c, [ join(code_dir, "garden.cpp"), *common_sources ], # TODO(gr3yknigh1): Move garden_platform.cpp away in library [2025/03/03]
+        c, [ join(code_dir, "garden_gameplay.cpp"), *common_sources ], # TODO(gr3yknigh1): Move garden_platform.cpp away in library [2025/03/03]
         output=join(output_dir(build_type), GAMEPLAY_DLL_NAME),
         includes=[
+            *common_includes,
             join(project_dir, "glad"),
             glm_folder,
         ],
@@ -150,6 +163,7 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
                 GARDEN_GAMEPLAY_CODE=0,
             ),
             includes=[
+                *common_includes,
                 c.join(project_dir, "glad"),
                 glm_folder,
             ],

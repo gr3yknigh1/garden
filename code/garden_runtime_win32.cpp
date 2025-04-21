@@ -1,4 +1,6 @@
 //!
+//! This is platform code which is specific to Windows.
+//!
 //! FILE          code\garden_platform_win32.cpp
 //!
 //! AUTHORS
@@ -36,17 +38,15 @@
     #undef near
 #endif
 
-
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
-#include "base/str.h"
-#include "base/str_view.h"
+#include "media/aseprite.h"
 
 #include "garden_gameplay.h"
-#include "garden_platform.h"
+#include "garden_runtime.h"
 
 #if !defined(GARDEN_ASSET_FOLDER)
     #error "Dev asset directory is not defined!"
@@ -542,7 +542,6 @@ struct Asset_Location {
     ~Asset_Location(void) noexcept {}
 };
 
-size_t get_file_size(FILE *file);
 
 bool make_asset_store_from_folder(Asset_Store *store, const char *folder_path);
 bool asset_store_destroy(Asset_Store *store);
@@ -913,6 +912,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         //
 
         if (reload_context.should_reload_gameplay.test()) {
+            puts("I: Gameplay code reload!");
+
             reload_context.should_reload_gameplay.clear();
             unload_gameplay(&gameplay);
             gameplay = load_gameplay(STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME));
@@ -1990,7 +1991,6 @@ watch_thread_worker(PVOID param)
     // NOTE(gr3yknigh1): Clunky! [2025/03/10]
     copy_memory(file_full_path_buffer, static_cast<const void *>(context->target_dir), target_dir_buffer_size);
 
-
     while (!context->should_stop.test()) {
         DWORD bytes_returned = 0;
         assert(ReadDirectoryChangesW(
@@ -1998,24 +1998,46 @@ watch_thread_worker(PVOID param)
             FILE_NOTIFY_CHANGE_LAST_WRITE, &bytes_returned, nullptr, nullptr
         ));
 
-        const wchar_t *changed_file_relative_path = file_notify_info->FileName;
-        const uint64_t changed_file_relative_path_length = file_notify_info->FileNameLength / sizeof(*file_notify_info->FileName);
-        const size_t changed_file_relative_path_buffer_size = file_notify_info->FileNameLength;
+        FILE_NOTIFY_INFORMATION *current_notify_info = file_notify_info;
+
+        for (;;) {
+
+            const wchar_t *changed_file_relative_path = current_notify_info->FileName;
+            const uint64_t changed_file_relative_path_length = current_notify_info->FileNameLength / sizeof(*current_notify_info->FileName);
+            const size_t changed_file_relative_path_buffer_size = current_notify_info->FileNameLength;
+
+            if (context->notification_routine != nullptr) {
+                // TODO(gr3yknigh1): Replace with some kind of Path_Join function [2025/03/10]
+                static_cast<wchar_t *>(file_full_path_buffer)[target_dir_length] = path16_get_separator();
+                size_t separator_size = sizeof(wchar_t);
+                copy_memory( get_offset(file_full_path_buffer, target_dir_buffer_size + separator_size), static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
+
+                Str16_View file_name(static_cast<wchar_t *>(file_full_path_buffer), target_dir_length + 1 + changed_file_relative_path_length);
+                //                                                                                    ^^^
+                // WARN(gr3yknigh1): BECAUSE WE INSERTED SEPARATOR BEFORE!!! [2025/03/10]
+                // Move it to Path_Join as soon as possible
+                //
 
 
-        if (context->notification_routine != nullptr) {
-            // TODO(gr3yknigh1): Replace with some kind of Path_Join function [2025/03/10]
-            static_cast<wchar_t *>(file_full_path_buffer)[target_dir_length] = path16_get_separator();
-            size_t separator_size = sizeof(wchar_t);
-            copy_memory( get_offset(file_full_path_buffer, target_dir_buffer_size + separator_size), static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
+                #if 0
+                //
+                // TODO(gr3yknigh1): Replace with iterator [2025/04/15]
+                //
+                for (Size i = 0; i < file_name.length; ++i) {
+                    putwchar(file_name.data[i]);
+                }
+                putchar('\n');
+                #endif
 
-            Str16_View file_name(static_cast<wchar_t *>(file_full_path_buffer), target_dir_length + 1 + changed_file_relative_path_length);
-            //                                                                                    ^^^
-            // WARN(gr3yknigh1): BECAUSE WE INSERTED SEPARATOR BEFORE!!! [2025/03/10]
-            // Move it to Path_Join as soon as possible
-            //
+                context->notification_routine(context, file_name, (File_Action)current_notify_info->Action, context->parameter);
+            }
 
-            context->notification_routine(context, file_name, (File_Action)file_notify_info->Action, context->parameter);
+
+            if (!current_notify_info->NextEntryOffset) {
+                break;
+            }
+
+            current_notify_info = get_offset(current_notify_info, current_notify_info->NextEntryOffset);
         }
     }
 
@@ -2090,19 +2112,6 @@ void
 unload_gameplay(Gameplay *gameplay)
 {
     assert(FreeLibrary(gameplay->module));
-}
-
-size_t
-get_file_size(FILE *file)
-{
-    assert(file);
-
-    fseek(file, 0, SEEK_END);
-    size_t file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    assert(file_size);
-
-    return file_size;
 }
 
 bool

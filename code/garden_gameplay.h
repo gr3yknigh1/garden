@@ -9,7 +9,7 @@
 //
 #define GARDEN_GAMEPLAY_H
 
-#include "garden_platform.h"
+#include "garden_runtime.h"
 
 struct Game_Context;
 
