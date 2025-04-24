@@ -7,14 +7,18 @@
 // NOTICE        (c) Copyright 2025 by Ilya Akkuzin. All rights reserved.
 //
 
+#include <ctype.h>  // isspace
+
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
+
 #include <memory>
 
 #include "garden_runtime.h"
 
-#if GARDEN_GAMEPLAY_CODE != 1
+#if GARDEN_GAMEPLAY_CODE == 1
+#else
     #if defined(_WIN32)
         #include "garden_runtime_win32.cpp"
     #else
@@ -130,6 +134,223 @@ make_static_arena(Size capacity)
 
     return arena;
 }
+
+Lexer
+make_lexer(char *buffer, size_t buffer_size)
+{
+    Lexer lexer;
+
+    lexer.cursor = buffer;
+    lexer.lexeme = *buffer;
+
+    lexer.buffer = buffer;
+    lexer.buffer_size = buffer_size;
+
+    return lexer;
+}
+
+void
+lexer_advance(Lexer *lexer, int32_t count)
+{
+    size_t cursor_index = lexer->cursor - lexer->buffer;
+
+    if (lexer_is_end(lexer) && cursor_index + count < lexer->buffer_size) {
+        return;
+    }
+
+    while (count > 0) {
+        lexer->cursor++;
+        --count;
+    }
+
+    lexer->lexeme = *(lexer->cursor);
+}
+
+char
+lexer_peek(Lexer *lexer, int32_t offset)
+{
+    size_t cursor_index = lexer->cursor - lexer->buffer;
+
+    // TODO(gr3yknigh1): Maybe make it signed? [2025/02/23]
+    if (cursor_index + offset < lexer->buffer_size) {
+        char *peek = lexer->cursor + offset;
+        return *peek;
+    }
+
+    return 0;
+}
+
+Str8_View
+lexer_peek_view(Lexer *lexer, int32_t offset)
+{
+    size_t cursor_index = lexer->cursor - lexer->buffer;
+
+    // TODO(gr3yknigh1): Maybe make it signed? [2025/02/23]
+    if (cursor_index + offset < lexer->buffer_size) {
+        if (offset < 0) {
+            return Str8_View(lexer->cursor + offset, -offset);
+        } else if (offset > 0) {
+            return Str8_View(lexer->cursor, offset);
+        }
+    }
+
+    return Str8_View();  // do a better job next time
+}
+
+bool
+lexer_check_peeked(Lexer *lexer, const char *s)
+{
+    Str8_View sv{s};
+    return lexer_check_peeked(lexer, sv);
+}
+
+bool
+lexer_check_peeked(Lexer *lexer, Str8_View sv)
+{
+    Str8_View peek_view{lexer_peek_view(lexer, static_cast<int32_t>(sv.length))};
+    return str8_view_is_equals(peek_view, sv);
+}
+
+Str8_View
+lexer_skip_until(Lexer *lexer, char c)
+{
+    Str8_View ret{};
+
+    ret.data = lexer->cursor;
+
+    while (!lexer_is_end(lexer) && lexer->lexeme != c) {
+        lexer_advance(lexer);
+        ret.length++;
+    }
+
+    return ret;
+}
+
+Str8_View
+lexer_skip_until(Lexer *lexer, Str8_View sv)
+{
+    Str8_View ret{};
+
+    if (sv.empty()) {
+        return ret;
+    }
+
+    ret.data = lexer->cursor;
+
+    while (!lexer_is_end(lexer) && !lexer_check_peeked(lexer, sv)) {
+        lexer_advance(lexer);
+        ret.length++;
+    }
+
+    return ret;
+}
+
+
+Str8_View
+lexer_skip_until_endline(Lexer *lexer)
+{
+    Str8_View ret;
+
+    ret.data = lexer->cursor;
+
+    bool is_crlf = false;
+
+    while (!lexer_is_end(lexer) && !lexer_is_endline(lexer, &is_crlf)) {
+        lexer_advance(lexer);
+        ret.length++;
+    }
+
+    if (is_crlf) {
+        lexer_advance(lexer);
+        lexer_advance(lexer);
+    } else {
+        lexer_advance(lexer);
+    }
+
+    return ret;
+}
+
+bool
+lexer_is_endline(Lexer *lexer, bool *is_crlf)
+{
+    if (is_crlf != nullptr) {
+        *is_crlf = (lexer->cursor[0] == '\r' && lexer->cursor[1] == '\n');
+    }
+    return lexer->lexeme == '\n' || (lexer->cursor[0] == '\r' && lexer->cursor[1] == '\n');
+}
+
+void
+lexer_skip_whitespace(Lexer *lexer)
+{
+    while (!lexer_is_end(lexer) && isspace(lexer->lexeme)) {
+        lexer_advance(lexer);
+    }
+}
+
+bool
+lexer_is_end(Lexer *lexer)
+{
+    size_t cursor_index = lexer->cursor - lexer->buffer;
+    return cursor_index >= lexer->buffer_size;
+}
+
+
+bool
+lexer_parse_int(Lexer *lexer, int *result)
+{
+    // TODO(gr3yknigh1): Error handling [2025/02/23]
+
+    int num = 0;
+
+    bool is_negative = false;
+
+    if (lexer->lexeme == '-') {
+        is_negative = true;
+        lexer_advance(lexer);
+    }
+
+    while (lexer->lexeme && (lexer->lexeme >= '0' && lexer->lexeme <= '9')) {
+        num = num * 10 + (lexer->lexeme - '0');
+        lexer_advance(lexer);
+    }
+
+    if (is_negative) {
+        num = -1 * num;
+    }
+
+    *result = num;
+
+    return true;
+}
+
+bool
+lexer_parse_str_to_view(Lexer *lexer, Str8_View *sv)
+{
+    if (lexer->lexeme != '"') {
+        return false;
+    }
+
+    // NOTE(gr3yknigh1): Skipping '"' [2025/02/24]
+    lexer_advance(lexer); // TODO(gr3yknigh1): Wrap in `Lexer_AdvanceIf(Lexer *, int32_t count, char c)`
+
+    *sv = lexer_skip_until(lexer, '"');
+
+    // NOTE(gr3yknigh1): Skipping '"' [2025/02/24]
+    lexer_advance(lexer); // TODO(gr3yknigh1): Wrap in `lexer_advance_if(Lexer *, int32_t count, char c)`
+
+    return true;
+}
+
+bool
+lexer_check_peeked_and_advance(Lexer *lexer, Str8_View sv)
+{
+    if (lexer_check_peeked(lexer, sv)) {
+        lexer_advance(lexer, sv.length); // @cleanup
+        return true;
+    }
+    return false;
+}
+
 
 #if 0
 // TODO(gr3yknigh1): Reuse for stack [2025/04/07]

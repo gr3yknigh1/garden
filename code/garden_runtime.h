@@ -806,6 +806,44 @@ str16_view_is_equals(const Str16_View a, const char *str) noexcept
 }
 
 //
+// Parsing:
+//
+struct Lexer {
+    char *cursor;
+    char lexeme;
+
+    char *buffer;
+    size_t buffer_size;
+};
+
+//!
+//! @todo Make buffer be const!
+//!
+Lexer make_lexer(char *buffer, size_t buffer_size);
+
+void lexer_advance(Lexer *lexer, int32_t count = 1);
+
+char      lexer_peek(Lexer *lexer, int32_t offset);
+Str8_View lexer_peek_view(Lexer *lexer, int32_t offset);
+
+bool      lexer_check_peeked(Lexer *lexer, const char *s);
+bool      lexer_check_peeked(Lexer *lexer, Str8_View sv);
+bool      lexer_check_peeked_and_advance(Lexer *lexer, Str8_View sv);
+
+bool      lexer_parse_int(Lexer *lexer, int *result);
+bool      lexer_parse_str_to_view(Lexer *lexer, Str8_View *sv);
+
+// TODO(gr3yknigh1): Rename lexer_skip_until* to lexer_advance_until* [2025/03/28]
+Str8_View lexer_skip_until(Lexer *lexer, char c);
+Str8_View lexer_skip_until(Lexer *lexer, Str8_View sv);
+Str8_View lexer_skip_until_endline(Lexer *lexer);
+void      lexer_skip_whitespace(Lexer *lexer);
+
+bool      lexer_is_endline(Lexer *lexer, bool *is_crlf = nullptr);
+bool      lexer_is_end(Lexer *lexer);
+
+
+//
 // Etc:
 //
 
