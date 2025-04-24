@@ -117,24 +117,3 @@ normalize_vector2f(float *x, float *y)
     *x /= magnitude;
     *y /= magnitude;
 }
-
-//
-// TODO(gr3yknigh1): Move this out to separate platform dependent module [2025/03/03]
-//
-
-extern "C" BOOL WINAPI
-DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
-{
-    (void)instance;
-    (void)reserved;
-
-    switch(reason) {
-        case DLL_PROCESS_ATTACH:
-        case DLL_THREAD_ATTACH:
-        case DLL_THREAD_DETACH:
-        case DLL_PROCESS_DETACH:
-            break;
-    }
-
-    return TRUE;
-}

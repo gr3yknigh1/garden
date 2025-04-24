@@ -17,13 +17,10 @@
 
 #include "garden_runtime.h"
 
-#if GARDEN_GAMEPLAY_CODE == 1
+#if defined(_WIN32)
+    #include "garden_runtime_win32.cpp"
 #else
-    #if defined(_WIN32)
-        #include "garden_runtime_win32.cpp"
-    #else
-        #error "Unhandled platform! No runtime was included"
-    #endif
+    #error "Unhandled platform! No runtime was included"
 #endif
 
 #include "media/aseprite.cpp"
@@ -758,17 +755,4 @@ get_file_size(FILE *file)
     assert(file_size);
 
     return file_size;
-}
-
-
-#include <Windows.h>
-
-Size
-get_page_size(void)
-{
-    Size result;
-    SYSTEM_INFO system_info = {0};
-    GetSystemInfo(&system_info);
-    result = system_info.dwPageSize;
-    return result;
 }

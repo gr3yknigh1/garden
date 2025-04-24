@@ -47,13 +47,7 @@
 #include "garden_gameplay.h"
 #include "garden_runtime.h"
 
-#if !defined(GARDEN_ASSET_FOLDER)
-    #error "Dev asset directory is not defined!"
-#else
-    #pragma message( "Using DEV asset dir: '" STRINGIFY(GARDEN_ASSET_FOLDER) "'" )
-#endif
-
-// TODO(gr3yknigh1): Replace with more non-platform dependent code [2025/03/03]
+//! @todo(gr3yknigh1): Replace with more non-platform dependent code [2025/03/03] #refactor #renaming
 #if !defined(ZERO_STRUCT)
     #define ZERO_STRUCT(STRUCT_PTR) ZeroMemory((STRUCT_PTR), sizeof(*(STRUCT_PTR)))
 #endif
@@ -65,14 +59,14 @@ typedef unsigned int size32_t;
 
 wchar_t path16_get_separator(void);
 
-bool path16_get_parent(const wchar_t *path, size_t path_length, Str16_View *out);
+bool path16_get_parent(const wchar_t *path, Size path_length, Str16_View *out);
 
 //
 // Perf helpers:
 //
 
-int64_t perf_get_counter_frequency(void);
-int64_t perf_get_counter(void);
+S64 perf_get_counter_frequency(void);
+S64 perf_get_counter(void);
 uint64_t perf_get_cycles_count(void);
 
 #pragma pack(push, 1)
@@ -83,8 +77,8 @@ struct Perf_Block_Record {
     uint64_t line_number;
     uint64_t cycles_begin;
     uint64_t cycles_end;
-    int64_t counter_begin;
-    int64_t counter_end;
+    S64 counter_begin;
+    S64 counter_end;
 };
 #pragma pack(pop)
 
@@ -227,7 +221,7 @@ struct Vertex_Buffer_Layout {
 //
 bool make_vertex_buffer_layout(Static_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity);
 
-Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, size_t size);
+Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, Size size);
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_float  (Vertex_Buffer_Layout *layout, unsigned int count);
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_integer(Vertex_Buffer_Layout *layout, unsigned int count);
 
@@ -287,9 +281,9 @@ void Win32_HandleKeyboardInput(MSG message, Input_State *input_state);  // TODO
 //
 
 struct Clock {
-    int64_t ticks_begin;
-    int64_t ticks_end;
-    int64_t frequency;
+    S64 ticks_begin;
+    S64 ticks_end;
+    S64 frequency;
 };
 
 Clock make_clock(void);
@@ -300,7 +294,7 @@ double clock_tick(Clock *clock);
 // Media:
 //
 
-enum struct Bitmap_Picture_Header_Type : uint32_t {
+enum struct Bitmap_Picture_Header_Type : U32 {
     BitmapCoreHeader = 12,
     Os22XBitmapHeader_S = 16,
     BitmapInfoHeader = 40,
@@ -311,7 +305,7 @@ enum struct Bitmap_Picture_Header_Type : uint32_t {
     BitmapV5Header = 124,
 };
 
-enum struct Bitmap_Picture_Compression_Method : uint32_t {
+enum struct Bitmap_Picture_Compression_Method : U32 {
     RGB = 0,
     RLE8 = 1,
     RLE4 = 2,
@@ -327,31 +321,31 @@ enum struct Bitmap_Picture_Compression_Method : uint32_t {
 #pragma pack(push, 1)
 struct Bitmap_Picture_DIB_Header {
     Bitmap_Picture_Header_Type header_size;
-    uint32_t width;
-    uint32_t height;
-    uint16_t planes_count;
-    uint16_t depth;
+    U32 width;
+    U32 height;
+    U16 planes_count;
+    U16 depth;
     Bitmap_Picture_Compression_Method compression_method;
-    uint32_t image_size;
-    uint32_t x_pixel_per_meter;
-    uint32_t y_pixel_per_meter;
-    uint32_t color_used;
-    uint32_t color_important;
+    U32 image_size;
+    U32 x_pixel_per_meter;
+    U32 y_pixel_per_meter;
+    U32 color_used;
+    U32 color_important;
 };
 #pragma pack(pop)
 
 #pragma pack(push, 1)
 struct Bitmap_Picture_Header {
-    uint16_t type;
-    uint32_t file_size;
-    uint16_t reserved[2];
-    uint32_t data_offset;
+    U16 type;
+    U32 file_size;
+    U16 reserved[2];
+    U32 data_offset;
 };
 #pragma pack(pop)
 
 #pragma pack(push, 1)
 struct Color_BGRA_U8 {
-    uint8_t b, g, r, a;
+    U8 b, g, r, a;
 };
 #pragma pack(pop)
 
@@ -463,7 +457,7 @@ enum struct Asset_Store_Place {
 };
 
 struct Asset_Store {
-    static constexpr uint16_t max_asset_count = 1024;
+    static constexpr U16 max_asset_count = 1024;
 
     Block_Allocator asset_pool;
     Block_Allocator asset_content;
@@ -500,7 +494,7 @@ enum struct Asset_Location_Type {
 
 struct File_Info {
     FILE  *handle;
-    size_t size;
+    Size size;
     Str8   path;
 
     ~File_Info(void) noexcept {}
@@ -562,7 +556,7 @@ struct Shader {
     GLuint program_id;
     char *source_code;
 
-    Shader_Module modules[static_cast<size_t>(Shader_Module_Type::Count_)];
+    Shader_Module modules[static_cast<Size>(Shader_Module_Type::Count_)];
 };
 
 struct Asset {
@@ -584,7 +578,7 @@ struct Asset {
 Asset *asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path);
 
 // helper
-bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, Tilemap *tilemap);
+bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, Size buffer_size, Tilemap *tilemap);
 bool asset_image_send_to_gpu(Asset_Store *store, Asset *asset, int unit, Shader *shader);
 
 bool shader_bind(Shader *shader);
@@ -598,10 +592,35 @@ struct Shader_Compile_Result {
     GLuint shader_program_id;
 };
 
-Shader_Compile_Result compile_shader(char *source_code, size_t file_size);
+Shader_Compile_Result compile_shader(char *source_code, Size file_size);
 
 static void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
 
+#if GARDEN_GAMEPLAY_CODE == 1
+
+#include "garden_gameplay.cpp"
+
+extern "C" BOOL WINAPI
+DllMain([[maybe_unused]] HINSTANCE instance, DWORD reason, [[maybe_unused]] LPVOID reserved)
+{
+    switch(reason) {
+        case DLL_PROCESS_ATTACH:
+        case DLL_THREAD_ATTACH:
+        case DLL_THREAD_DETACH:
+        case DLL_PROCESS_DETACH:
+            break;
+    }
+
+    return TRUE;
+}
+
+#else
+
+#if !defined(GARDEN_ASSET_FOLDER)
+    #error "Dev asset directory is not defined!"
+#else
+    #pragma message( "Using DEV asset dir: '" STRINGIFY(GARDEN_ASSET_FOLDER) "'" )
+#endif
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -1006,7 +1025,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 assert(texture_uniform_loc != -1);
                 glUniform1i(texture_uniform_loc, tilemap_asset->u.tilemap.texture_asset->u.texture.unit);
 
-                size_t vertex_buffer_size = tilemap_vertexes_count * sizeof(*tilemap_vertexes);
+                Size vertex_buffer_size = tilemap_vertexes_count * sizeof(*tilemap_vertexes);
                 glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, tilemap_vertexes, GL_DYNAMIC_DRAW);
                 glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride)); // TODO(gr3yknigh1): Replace layout [2025/03/30]
             }
@@ -1020,7 +1039,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
                 assert(texture_uniform_loc != -1);
                 glUniform1i(texture_uniform_loc, atlas_asset->u.texture.unit);
 
-                size_t vertex_buffer_size = platform_context.vertexes_count * sizeof(*platform_context.vertexes);
+                Size vertex_buffer_size = platform_context.vertexes_count * sizeof(*platform_context.vertexes);
                 glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, platform_context.vertexes, GL_DYNAMIC_DRAW);
                 glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
 
@@ -1052,13 +1071,9 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     assert(asset_store_destroy(&store));
 
-#if defined(GARDEN_USE_CRT_ALLOCATIONS)
-    _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_DEBUG);
-    _CrtDumpMemoryLeaks();
-#endif
-
     return 0;
 }
+
 
 LRESULT CALLBACK
 win32_window_message_handler(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
@@ -1202,6 +1217,8 @@ win32_init_opengl_context(HDC device_context)
     return render_context;
 }
 
+#endif
+
 GLenum
 gl_convert_shader_module_type_to_gl_enum(Shader_Module_Type type) {
 
@@ -1236,7 +1253,7 @@ compile_shader_from_str8(const char *string, Shader_Module_Type type)
         glGetShaderiv(id, GL_INFO_LOG_LENGTH, &log_length);
         assert(log_length);
 
-        size_t log_buffer_size = log_length + 1;
+        Size log_buffer_size = log_length + 1;
         char *log_buffer = static_cast<char *>(allocate(log_buffer_size));
         assert(log_buffer);
 
@@ -1268,7 +1285,7 @@ link_shader_program(GLuint vertex_shader, GLuint fragment_shader)
         GLint log_length{0};
         glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
 
-        size_t log_buffer_size = log_length + 1;
+        Size log_buffer_size = log_length + 1;
         char *log_buffer = static_cast<char *>(allocate(log_buffer_size));
         assert(log_buffer);
 
@@ -1336,7 +1353,7 @@ vertex_buffer_layout_push_float(Vertex_Buffer_Layout *layout, unsigned int count
 void
 vertex_buffer_layout_build_attrs(const Vertex_Buffer_Layout *layout)
 {
-    size_t offset = 0;
+    Size offset = 0;
 
     for (unsigned int attribute_index = 0; attribute_index < layout->attributes_count;
          ++attribute_index) {
@@ -1426,21 +1443,21 @@ camera_get_projection_matrix(Camera *camera, int viewport_width, int viewport_he
     exit(1);
 }
 
-int64_t
+S64
 perf_get_counter_frequency(void)
 {
     LARGE_INTEGER perf_frequency_result;
     QueryPerformanceFrequency(&perf_frequency_result);
-    int64_t perf_frequency = perf_frequency_result.QuadPart;
+    S64 perf_frequency = perf_frequency_result.QuadPart;
     return perf_frequency;
 }
 
-int64_t
+S64
 perf_get_counter(void)
 {
     LARGE_INTEGER perf_counter_result;
     QueryPerformanceCounter(&perf_counter_result);
-    int64_t perf_counter = perf_counter_result.QuadPart;
+    S64 perf_counter = perf_counter_result.QuadPart;
     return perf_counter;
 }
 
@@ -1454,10 +1471,10 @@ perf_get_cycles_count(void)
 void
 perf_block_record_print(const Perf_Block_Record *record)
 {
-    int64_t perf_frequency = perf_get_counter_frequency();
+    S64 perf_frequency = perf_get_counter_frequency();
 
-    int64_t counter_elapsed = record->counter_end - record->counter_begin;
-    int64_t ms_elapsed = (1000 * counter_elapsed) / perf_frequency;
+    S64 counter_elapsed = record->counter_end - record->counter_begin;
+    S64 ms_elapsed = (1000 * counter_elapsed) / perf_frequency;
     uint64_t cycles_elapsed = record->cycles_end - record->cycles_begin;
     uint64_t mega_cycles_elapsed = cycles_elapsed / (1000 * 1000);
 
@@ -1565,7 +1582,7 @@ gl_make_texture_from_pixels(void *pixels, size32_t width, size32_t height, Color
 }
 
 bool
-load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, Tilemap *tilemap)
+load_tilemap_from_buffer(Asset_Store *store, char *buffer, Size buffer_size, Tilemap *tilemap)
 {
     Lexer lexer = make_lexer(buffer, buffer_size);
 
@@ -1627,7 +1644,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
             int *indexes_cursor = tilemap->indexes;
 
             do {
-                size_t current_index_index = indexes_cursor - tilemap->indexes;
+                Size current_index_index = indexes_cursor - tilemap->indexes;
                 assert(current_index_index + 1 <= tilemap->indexes_count);
 
                 assert(lexer_parse_int(&lexer, indexes_cursor));
@@ -1636,7 +1653,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
                 ++indexes_cursor;
             } while(isdigit(lexer.lexeme));
 
-            size_t filled_indexes = indexes_cursor - tilemap->indexes;
+            Size filled_indexes = indexes_cursor - tilemap->indexes;
             assert(filled_indexes == tilemap->indexes_count);
         }
 
@@ -1661,12 +1678,12 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, size_t buffer_size, T
 }
 
 bool
-path16_get_parent(const wchar_t *path, size_t path_length, Str16_View *out)
+path16_get_parent(const wchar_t *path, Size path_length, Str16_View *out)
 {
 
     out->data = path;
 
-    for (size_t index = path_length - 1; index > 0; --index) {
+    for (Size index = path_length - 1; index > 0; --index) {
         wchar_t c = path[index];
 
         if (c == path16_get_separator()) {
@@ -1703,8 +1720,8 @@ watch_thread_worker(PVOID param)
 
     // TODO(gr3yknigh1): Replace with String_Builder [2025/03/10]
     uint64_t target_dir_length = str16_get_length(context->target_dir);
-    size_t target_dir_buffer_size = target_dir_length * sizeof(*context->target_dir);
-    size_t file_full_path_buffer_capacity = (target_dir_length + MAX_PATH) * sizeof(*context->target_dir);
+    Size target_dir_buffer_size = target_dir_length * sizeof(*context->target_dir);
+    Size file_full_path_buffer_capacity = (target_dir_length + MAX_PATH) * sizeof(*context->target_dir);
 
     void *file_full_path_buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, file_full_path_buffer_capacity);
     assert(file_full_path_buffer && "Buy more RAM");
@@ -1725,12 +1742,12 @@ watch_thread_worker(PVOID param)
 
             const wchar_t *changed_file_relative_path = current_notify_info->FileName;
             const uint64_t changed_file_relative_path_length = current_notify_info->FileNameLength / sizeof(*current_notify_info->FileName);
-            const size_t changed_file_relative_path_buffer_size = current_notify_info->FileNameLength;
+            const Size changed_file_relative_path_buffer_size = current_notify_info->FileNameLength;
 
             if (context->notification_routine != nullptr) {
                 // TODO(gr3yknigh1): Replace with some kind of Path_Join function [2025/03/10]
                 static_cast<wchar_t *>(file_full_path_buffer)[target_dir_length] = path16_get_separator();
-                size_t separator_size = sizeof(wchar_t);
+                Size separator_size = sizeof(wchar_t);
                 copy_memory( get_offset(file_full_path_buffer, target_dir_buffer_size + separator_size), static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
 
                 Str16_View file_name(static_cast<wchar_t *>(file_full_path_buffer), target_dir_length + 1 + changed_file_relative_path_length);
@@ -1916,7 +1933,7 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
         #endif
     } else if (asset->type == Asset_Type::Tilemap) {
 
-        size_t buffer_size = asset->location.u.file.size + 1;
+        Size buffer_size = asset->location.u.file.size + 1;
         void* buffer = allocate(buffer_size);
         zero_memory(buffer, buffer_size);
 
@@ -1980,7 +1997,7 @@ asset_reload(Asset_Store *store, Asset *asset)
             asset->u.shader.program_id = compile_result.shader_program_id;
             assert(asset->u.shader.program_id);
         } else if (asset->type == Asset_Type::Tilemap) {
-            size_t buffer_size = asset->location.u.file.size + 1;
+            Size buffer_size = asset->location.u.file.size + 1;
             void* buffer = allocate(buffer_size);
             zero_memory(buffer, buffer_size);
 
@@ -2148,7 +2165,7 @@ asset_watch_routine([[maybe_unused]] Watch_Context *watch_context, const Str16_V
 }
 
 Shader_Compile_Result
-compile_shader(char *source_code, size_t file_size)
+compile_shader(char *source_code, Size file_size)
 {
     Lexer lexer = make_lexer(source_code, file_size);
 
@@ -2271,4 +2288,15 @@ bind_vertex_buffer(Vertex_Buffer *buffer)
     glBindBuffer(GL_ARRAY_BUFFER, buffer->id);
 
     return true;
+}
+
+
+Size
+get_page_size(void)
+{
+    Size result;
+    SYSTEM_INFO system_info = {0};
+    GetSystemInfo(&system_info);
+    result = system_info.dwPageSize;
+    return result;
 }

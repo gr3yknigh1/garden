@@ -90,11 +90,20 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
     # TODO(i.akkuzin): Make release configuration build. Currently we using `/Od` flag, which disables any optimizations and link with debug runtime (/MTd). [2025/02/08]
     # TODO(i.akkuzin): Remove _CRT_SECURE_NO_WARNINGS [2025/02/08]
 
-    GAMEPLAY_DLL_NAME = "garden_gameplay.dll"
 
     c.echo("I: Compiling game code...")
 
-    common_compile_flags = [
+    #
+    # Common:
+    #
+
+    GAMEPLAY_DLL_NAME = "garden_gameplay.dll"
+
+    defines: dict[str, Any] = dict(
+        GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
+        _CRT_SECURE_NO_WARNINGS=1,
+    )
+    compile_flags = [
         "/MTd",
         "/Zi",
         "/std:c++20",
@@ -103,75 +112,63 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
         "/GR-",  # Disables RTTI
         "/nologo"
     ]
-    common_link_flags = ["/DEBUG:FULL"]
-    common_defines: dict[str, Any] = dict(
-        GARDEN_GAMEPLAY_DLL_NAME=GAMEPLAY_DLL_NAME,
-    )
-    common_includes = [code_dir]
-
-    common_sources = [
+    link_flags = ["/DEBUG:FULL"]
+    libs = ["kernel32.lib", "user32.lib", "gdi32.lib", glm_library(build_type)]
+    includes = [
+        code_dir,
+        glm_folder,
+        c.join(project_dir, "glad"),
+    ]
+    sources = [
         c.join(code_dir, "garden_runtime.cpp"),
+        c.join(project_dir, "glad", "glad.c"),
+        c.join(project_dir, "glad", "glad_wgl.c"),
     ]
 
-    if build_type == "Debug":
-        common_defines["GARDEN_BUILD_TYPE_DEBUG"] = 1
-
-    if build_type == "Release":
-        common_defines["GARDEN_BUILD_TYPE_RELEASE"] = 1
-
     if perf:
-        common_defines["PERF_ENABLED"] = 1
+        defines["PERF_ENABLED"] = 1
 
+    #
+    # Gameplay code:
+    #
     msvc.compile(
-        c, [ join(code_dir, "garden_gameplay.cpp"), *common_sources ], # TODO(gr3yknigh1): Move garden_platform.cpp away in library [2025/03/03]
+        c, sources,
         output=join(output_dir(build_type), GAMEPLAY_DLL_NAME),
-        includes=[
-            *common_includes,
-            join(project_dir, "glad"),
-            glm_folder,
-        ],
+        includes=[*includes],
         defines=dict(
-            **common_defines,
+            **defines,
             GARDEN_GAMEPLAY_CODE=1,
         ),
-        libs=[],
-        link_flags=[*common_link_flags],
-        compile_flags=[*common_compile_flags],
+        libs=["kernel32.lib", "user32.lib", "gdi32.lib", glm_library(build_type)],
+        link_flags=[*link_flags],
+        compile_flags=[*compile_flags],
         env=build_env,
         only_preprocessor=only_preprocessor, unicode_support=True, is_dll=True
     )
 
+
+    #
+    # Runtime code:
+    #
     garden_output_exe = c.join(output_dir(build_type), "garden.exe")
-    garden_platform_sources = [
-        c.join(project_dir, "glad", "glad.c"),
-        c.join(project_dir, "glad", "glad_wgl.c"),
-        *common_sources
-    ]
 
     if not is_file_busy(garden_output_exe):
-        c.echo("I: Compiling platform runtime...")
+        c.echo("I: Compiling runtime code...")
 
         msvc.compile(
-            c, garden_platform_sources,
+            c, sources,
             output=garden_output_exe,
-            libs=["kernel32.lib", "user32.lib", "gdi32.lib", glm_library(build_type)],
+            libs=libs,
+            includes=includes, link_flags=link_flags, compile_flags=compile_flags,
             defines=dict(
-                **common_defines,
-                _CRT_SECURE_NO_WARNINGS=1,
+                **defines,
                 GARDEN_ASSET_FOLDER=c.quote(assets_dir),
                 GARDEN_GAMEPLAY_CODE=0,
             ),
-            includes=[
-                *common_includes,
-                c.join(project_dir, "glad"),
-                glm_folder,
-            ],
-            link_flags=[*common_link_flags],
-            compile_flags=[*common_compile_flags],
             env=build_env,
             only_preprocessor=only_preprocessor, unicode_support=True
         )
     else:
-        c.echo("W: Skipping platform runtime because {} is busy...".format(garden_output_exe))
+        c.echo("W: Skipping runtime code because {} is busy...".format(c.quoted(garden_output_exe)))
 
     # link.exe topdown.obj /MACHINE:X64 /SUBSYSTEM:WINDOWS /Fe:topdown.exe
