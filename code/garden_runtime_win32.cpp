@@ -811,26 +811,17 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
     reset(&page_arena);
 
     Tilemap *tilemap = &tilemap_asset->u.tilemap;
-
-    static size_t TILEMAP_VERTEX_COUNT_PER_TILE = 6; // two triangles
-    float tilemap_position_x = 100, tilemap_position_y = 100;
-    U32 tilemap_tiles_count = tilemap->row_count * tilemap->col_count;
-    size_t tilemap_vertexes_buffer_size = tilemap_tiles_count * TILEMAP_VERTEX_COUNT_PER_TILE * sizeof(Vertex);
+    F32 tilemap_position_x = 100, tilemap_position_y = 100;
     Texture *tilemap_texture = &tilemap->texture_asset->u.texture;
 
     Atlas tilemap_atlas{
-        #if 1
-        static_cast<float>(tilemap_texture->width),
-        static_cast<float>(tilemap_texture->height)
-        #else
-        static_cast<float>(tilemap->tile_x_pixel_count),
-        static_cast<float>(tilemap->tile_y_pixel_count)
-        #endif
+        static_cast<F32>(tilemap_texture->width),
+        static_cast<F32>(tilemap_texture->height)
     };
 
-    Vertex *tilemap_vertexes = static_cast<Vertex *>(allocate(tilemap_vertexes_buffer_size)); // TODO: Free later
+    Vertex *tilemap_vertexes = allocate_structs<Vertex>(tilemap->tiles_count() * TILEMAP_VERTEX_COUNT_PER_TILE); //! @todo Free later. #memory
     U32 tilemap_vertexes_count = generate_geometry_from_tilemap(
-        tilemap_vertexes, tilemap_tiles_count * TILEMAP_VERTEX_COUNT_PER_TILE, // @todo #refactor
+        tilemap_vertexes, tilemap->tiles_count() * TILEMAP_VERTEX_COUNT_PER_TILE, //! @todo #refactor
         tilemap, tilemap_position_x, tilemap_position_y,
         {255, 255, 255, 255}, &tilemap_atlas);
 

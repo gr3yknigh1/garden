@@ -192,8 +192,12 @@ EXPECT_TYPE_SIZE(bool, 1);
 
 struct Asset;
 
+
+//! @note Two triangles.
+constexpr U8 TILEMAP_VERTEX_COUNT_PER_TILE = 6;
+
 struct Tilemap {
-    // TODO(gr3yknigh1): Implement uint parsing [2025/02/23]
+    //! @todo(gr3yknigh1): Implement uint parsing. [2025/02/23] #refactor #parsing
 
     int row_count;
     int col_count;
@@ -205,6 +209,8 @@ struct Tilemap {
     size_t indexes_count;
 
     Asset *texture_asset;
+
+    constexpr int tiles_count(void) noexcept { return this->row_count * this->col_count; }
 };
 
 
