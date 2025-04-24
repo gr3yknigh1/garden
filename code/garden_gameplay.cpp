@@ -64,7 +64,7 @@ game_on_load(Platform_Context *platform, Game_Context *game)
 {
     (void)platform;
 
-    game->player_speed = 100;
+    game->player_speed = 1000;
 }
 
 extern "C" __declspec(dllexport) void

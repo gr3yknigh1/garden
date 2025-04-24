@@ -393,27 +393,6 @@ void gl_clear_all_errors(void);
 void gl_die_on_first_error(void);
 void gl_print_debug_info(void);
 
-//
-// Tilemaps:
-//
-
-struct Asset;
-
-struct Tilemap {
-    // TODO(gr3yknigh1): Implement uint parsing [2025/02/23]
-
-    int row_count;
-    int col_count;
-
-    int tile_x_pixel_count;
-    int tile_y_pixel_count;
-
-    int *indexes;
-    size_t indexes_count;
-
-    Asset *texture_asset;
-};
-
 #define WATCH_EXT_NONE MAKE_FLAG(0)
 #define WATCH_EXT_BMP  MAKE_FLAG(1)
 #define WATCH_EXT_GLSL MAKE_FLAG(2)
@@ -659,8 +638,6 @@ bool      lexer_is_end(Lexer *lexer);
 
 static void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
 
-int get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y);
-
 
 int WINAPI
 wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
@@ -837,10 +814,8 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     static size_t TILEMAP_VERTEX_COUNT_PER_TILE = 6; // two triangles
     float tilemap_position_x = 100, tilemap_position_y = 100;
-    size_t tilemap_tiles_count = tilemap->row_count * tilemap->col_count;
+    U32 tilemap_tiles_count = tilemap->row_count * tilemap->col_count;
     size_t tilemap_vertexes_buffer_size = tilemap_tiles_count * TILEMAP_VERTEX_COUNT_PER_TILE * sizeof(Vertex);
-    Vertex *tilemap_vertexes = static_cast<Vertex *>(allocate(tilemap_vertexes_buffer_size)); // TODO: Free later
-    size_t tilemap_vertexes_count = 0;
     Texture *tilemap_texture = &tilemap->texture_asset->u.texture;
 
     Atlas tilemap_atlas{
@@ -853,6 +828,13 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         #endif
     };
 
+    Vertex *tilemap_vertexes = static_cast<Vertex *>(allocate(tilemap_vertexes_buffer_size)); // TODO: Free later
+    U32 tilemap_vertexes_count = generate_geometry_from_tilemap(
+        tilemap_vertexes, tilemap_tiles_count * TILEMAP_VERTEX_COUNT_PER_TILE, // @todo #refactor
+        tilemap, tilemap_position_x, tilemap_position_y,
+        {255, 255, 255, 255}, &tilemap_atlas);
+
+#if 0
     for (int col_idx = 0; col_idx < tilemap->col_count; ++col_idx) {
         for (int row_idx = 0; row_idx < tilemap->row_count; ++row_idx) {
 
@@ -877,6 +859,7 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
         }
     }
+#endif
 
     //
     // Game mainloop:
@@ -2219,14 +2202,17 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
 bool
 asset_reload(Asset_Store *store, Asset *asset)
 {
+    bool result = true;
+
     assert(store && asset);
 
     if (asset->state == Asset_State::Loaded) {
-        assert(asset_unload(store, asset));
+        result = asset_unload(store, asset);
     }
 
-    if (asset->location.type == Asset_Location_Type::File) {
-        if (asset->location.u.file.handle == nullptr) {
+    if (result && asset->location.type == Asset_Location_Type::File) {
+
+        if (result && asset->location.u.file.handle == nullptr) {
             // TODO(gr3yknigh1): Wrap fopen in function which accepts Str8_View-s [2025/03/10]
             asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
             asset->location.u.file.size = get_file_size(asset->location.u.file.handle);
@@ -2244,30 +2230,45 @@ asset_reload(Asset_Store *store, Asset *asset)
             assert(load_bitmap_picture_pixel_data_from_file(&picture, asset->location.u.file.handle));
 
             assert(asset_from_bitmap_picture(asset, &picture));
-        }
-
-        if (asset->type == Asset_Type::Shader) {
+        } else if (asset->type == Asset_Type::Shader) {
 
             asset->u.shader.source_code = static_cast<char *>(allocate(&store->asset_content, asset->location.u.file.size));
             zero_memory(asset->u.shader.source_code, asset->location.u.file.size);
             fread(asset->u.shader.source_code, asset->location.u.file.size, 1, asset->location.u.file.handle);
 
-            Shader_Compile_Result result = compile_shader(asset->u.shader.source_code, asset->location.u.file.size);
+            Shader_Compile_Result compile_result = compile_shader(asset->u.shader.source_code, asset->location.u.file.size);
 
             glDeleteProgram(asset->u.shader.program_id); // @cleanup
-            asset->u.shader.program_id = result.shader_program_id;
+            asset->u.shader.program_id = compile_result.shader_program_id;
             assert(asset->u.shader.program_id);
+        } else if (asset->type == Asset_Type::Tilemap) {
+            size_t buffer_size = asset->location.u.file.size + 1;
+            void* buffer = allocate(buffer_size);
+            zero_memory(buffer, buffer_size);
+
+            fread(buffer, buffer_size - 1, 1, asset->location.u.file.handle);
+
+            assert(load_tilemap_from_buffer(store, static_cast<char *>(buffer), buffer_size, &asset->u.tilemap));
+
+            deallocate(buffer);
+
+        } else {
+            result = false;
         }
 
-        if (asset->location.u.file.handle != nullptr) {
+        if (result && asset->location.u.file.handle != nullptr) {
             fclose(asset->location.u.file.handle);
             asset->location.u.file.handle = nullptr;  // Saying that the file handle is closed
         }
     }
 
-    asset->state = Asset_State::Loaded;
-    return true;
+
+    if (result) {
+        asset->state = Asset_State::Loaded;
+    }
+    return result;
 }
+
 
 bool
 asset_from_bitmap_picture(Asset *asset, Bitmap_Picture *picture)
@@ -2296,7 +2297,6 @@ bool
 asset_unload(Asset_Store *store, Asset *asset)
 {
     assert(store && asset);
-
     assert(asset->state == Asset_State::Loaded);
 
     bool result = true;
@@ -2305,6 +2305,16 @@ asset_unload(Asset_Store *store, Asset *asset)
         result = reset(&store->asset_content, asset->u.texture.pixels.data );
     } else if (asset->type == Asset_Type::Shader) {
         result = reset(&store->asset_content, asset->u.shader.source_code);
+    } else if (asset->type == Asset_Type::Tilemap) {
+        Tilemap *tilemap = &asset->u.tilemap;
+
+        if (tilemap->texture_asset->state == Asset_State::Loaded) {
+            result = asset_unload(store, tilemap->texture_asset);
+        }
+
+        if (result) {
+            deallocate(tilemap->indexes);
+        }
     } else {
         result = false;
     }
@@ -2525,12 +2535,6 @@ bind_vertex_buffer(Vertex_Buffer *buffer)
     return true;
 }
 
-int
-get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y)
-{
-    return width * y + x;
-}
-
 
 #if 0
 struct Work_Result;
@@ -2540,7 +2544,7 @@ enum struct Error_Code {
     generic_error,
     // ...
     shader_compilation_error = 32,
-    shader_linkage_error = 32,
+    shader_linkage_error = 33,
 };
 
 struct Debug_Location {
@@ -2555,7 +2559,7 @@ struct Error_Report {
 };
 
 struct Error_Reporter {
-    Fixed_Array<Error_Report, 64> reports;
+    Static_Array<Error_Report, 64> reports;
 
     bool
     has_errors(void) noexcept

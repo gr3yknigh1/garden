@@ -22,54 +22,101 @@
     #endif
 #endif
 
-Size
+#include "media/aseprite.cpp"
+
+U32
 generate_rect(Vertex *vertexes, F32 x, F32 y, F32 width, F32 height, Color4 color)
 {
-    Size c = 0;
+    U32 count = 0;
 
     // bottom-left triangle
-    vertexes[c++] = {x + 0, y + 0, 0, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};          // bottom-left
-    vertexes[c++] = {x + width, y + 0, 1, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};      // bottom-right
-    vertexes[c++] = {x + width, y + height, 1, 1, pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
+    vertexes[count++] = {x + 0, y + 0, 0, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};          // bottom-left
+    vertexes[count++] = {x + width, y + 0, 1, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};      // bottom-right
+    vertexes[count++] = {x + width, y + height, 1, 1, pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
 
     // top-right triangle
-    vertexes[c++] = {x + 0, y + 0, 0, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};          // bottom-left
-    vertexes[c++] = {x + width, y + height, 1, 1, pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
-    vertexes[c++] = {x + 0, y + height, 0, 1, pack_rgba_to_int(color.r, color.g, color.b, color.a)};
+    vertexes[count++] = {x + 0, y + 0, 0, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};          // bottom-left
+    vertexes[count++] = {x + width, y + height, 1, 1, pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
+    vertexes[count++] = {x + 0, y + height, 0, 1, pack_rgba_to_int(color.r, color.g, color.b, color.a)};
 
-    return c;
+    return count;
 }
 
 // TODO(gr3yknigh1): Separate configuration at atlas and mesh size [2025/02/26]
-Size
+U32
 generate_rect_with_atlas(
-    Vertex *vertexes, F32 x, F32 y, F32 width, F32 height, Rect_F32 loc, Atlas *atlas, Color4 color)
+    Vertex *vertexes, F32 x, F32 y, F32 width, F32 height, Rect_F32 location, Atlas *atlas, Color4 color)
 {
-    Size c = 0;
+    U32 count = 0;
 
     // bottom-left triangle
-    vertexes[c++] = {
-        x + 0, y + 0, (loc.x + 0) / atlas->x_pixel_count, (loc.y + 0) / atlas->y_pixel_count,
+    vertexes[count++] = {
+        x + 0, y + 0, (location.x + 0) / atlas->x_pixel_count, (location.y + 0) / atlas->y_pixel_count,
         pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // bottom-left
-    vertexes[c++] = {
-        x + width, y + 0, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + 0) / atlas->y_pixel_count,
+    vertexes[count++] = {
+        x + width, y + 0, (location.x + location.width) / atlas->x_pixel_count, (location.y + 0) / atlas->y_pixel_count,
         pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // bottom-right
-    vertexes[c++] = {
-        x + width, y + height, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count,
+    vertexes[count++] = {
+        x + width, y + height, (location.x + location.width) / atlas->x_pixel_count, (location.y + location.height) / atlas->y_pixel_count,
         pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
 
     // top-right triangle
-    vertexes[c++] = {
-        x + 0, y + 0, (loc.x + 0) / atlas->x_pixel_count, (loc.y + 0) / atlas->y_pixel_count,
+    vertexes[count++] = {
+        x + 0, y + 0, (location.x + 0) / atlas->x_pixel_count, (location.y + 0) / atlas->y_pixel_count,
         pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // bottom-left
-    vertexes[c++] = {
-        x + width, y + height, (loc.x + loc.width) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count,
+    vertexes[count++] = {
+        x + width, y + height, (location.x + location.width) / atlas->x_pixel_count, (location.y + location.height) / atlas->y_pixel_count,
         pack_rgba_to_int(color.r, color.g, color.b, color.a)}; // top-right
-    vertexes[c++] = {
-        x + 0, y + height, (loc.x + 0) / atlas->x_pixel_count, (loc.y + loc.height) / atlas->y_pixel_count,
+    vertexes[count++] = {
+        x + 0, y + height, (location.x + 0) / atlas->x_pixel_count, (location.y + location.height) / atlas->y_pixel_count,
         pack_rgba_to_int(color.r, color.g, color.b, color.a)};
 
-    return c;
+    return count;
+}
+
+U32
+generate_geometry_from_tilemap(
+    Vertex *vertexes, U32 vertexes_capacity,
+    Tilemap *tilemap, F32 origin_x, F32 origin_y,
+    Color4 color, Atlas *atlas)
+{
+    assert(vertexes && tilemap && atlas);
+
+    U32 vertex_count = 0;
+
+    for (int col_index = 0; col_index < tilemap->col_count; ++col_index) {
+        for (int row_index = 0; row_index < tilemap->row_count; ++row_index) {
+
+            //! @todo(gr3yknigh1): Improve error handling [2025/04/24] #refactor #error_handling
+            assert(vertex_count < vertexes_capacity);
+
+
+            F32 tile_x = origin_x + col_index * 100; // tilemap->tile_x_pixel_count;
+            F32 tile_y = origin_y + row_index * 100; // tilemap->tile_y_pixel_count;
+
+            int tile_index_offset = get_offset_from_coords_of_2d_grid_array_rm(static_cast<int>(tilemap->col_count), col_index, row_index);
+            F32 tile_index = static_cast<F32>(tilemap->indexes[tile_index_offset]);
+
+            Rect_F32 tile_location{};
+            tile_location.x = floorf(tile_index / tilemap->col_count) * static_cast<F32>(tilemap->tile_x_pixel_count);
+            tile_location.y = floorf(fmodf(tile_index, static_cast<F32>(tilemap->col_count))) * static_cast<F32>(tilemap->tile_y_pixel_count);
+            tile_location.width = static_cast<F32>(tilemap->tile_x_pixel_count);
+            tile_location.height = static_cast<F32>(tilemap->tile_y_pixel_count);
+
+            vertex_count += generate_rect_with_atlas(
+                vertexes + vertex_count, tile_x, tile_y, 100, 100
+                /* static_cast<F32>(x_pixel_count), static_cast<F32>(y_pixel_count) */,
+                tile_location, atlas, color);
+        }
+    }
+
+    return vertex_count;
+}
+
+int
+get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y)
+{
+    return width * y + x;
 }
 
 Static_Arena

@@ -111,7 +111,6 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
 
     common_sources = [
         c.join(code_dir, "garden_runtime.cpp"),
-        c.join(code_dir, "media/aseprite.cpp"),
     ]
 
     if build_type == "Debug":

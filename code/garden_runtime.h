@@ -186,27 +186,64 @@ EXPECT_TYPE_SIZE(ZStr16, pointer_size);
 EXPECT_TYPE_SIZE(bool, 1);
 
 
+//
+// Tilemaps:
+//
+
+struct Asset;
+
+struct Tilemap {
+    // TODO(gr3yknigh1): Implement uint parsing [2025/02/23]
+
+    int row_count;
+    int col_count;
+
+    int tile_x_pixel_count;
+    int tile_y_pixel_count;
+
+    int *indexes;
+    size_t indexes_count;
+
+    Asset *texture_asset;
+};
+
 
 //
 // Graphics (gfx):
 //
 
+//! @todo(gr3yknigh1): Make it template? Or only `Rect` [2025/04/24] #refactor #renaming
 struct Rect_F32 {
     F32 x;
     F32 y;
+
+    //! @todo(gr3yknigh1): Rename this? [2025/04/24] #refactor #renaming
     F32 width;
     F32 height;
 };
 
-// TODO(gr3yknigh1): Replace with integers? [2025/02/26]
+//!
+//! @brief Struct which represents sprite atlas. Currently only holds information about count of pixels in Atlas.
+//!
+//! @todo(gr3yknigh1): Replace with integers? [2025/02/26] #refactor
+//!
+//! @todo(gr3yknigh1): Need to refactor this struct into something else [2025/04/24] #refactor
+//!
 struct Atlas {
+    //!
+    //! @brief Count of horizontal pixels (width).
+    //!
     F32 x_pixel_count;
+
+    //!
+    //! @brief Count of vertical pixels (height).
+    //!
     F32 y_pixel_count;
 };
 
-// TODO(gr3yknigh1): Rename [2025/04/14]
+//! @todo(gr3yknigh1): Rename it. Maybe RGBA_PackU32 [2025/04/14] #refactor
 typedef U32 packed_rgba_t;
-static_assert(sizeof(packed_rgba_t) == 4);
+EXPECT_TYPE_SIZE(packed_rgba_t, 4);
 
 constexpr packed_rgba_t
 pack_rgba_to_int(U8 r, U8 g, U8 b, U8 a)
@@ -221,8 +258,7 @@ struct Vertex {
     packed_rgba_t color;
 };
 #pragma pack(pop)
-
-static_assert(sizeof(Vertex) == (sizeof(F32) * 4 + sizeof(packed_rgba_t)));
+EXPECT_TYPE_SIZE(Vertex, sizeof(F32) * 4 + sizeof(packed_rgba_t));
 
 #pragma pack(push, 1)
 struct Color_RGBA_U8 {
@@ -255,21 +291,31 @@ struct Camera {
     Camera_ViewMode view_mode;
 };
 
-//
-// @param[out] rect Output array of vertexes
-//
-size_t generate_rect(Vertex *rect, F32 x, F32 y, F32 width, F32 height, Color4 color);
+//!
+//! @param[out] rect Output array of vertexes
+//!
+U32 generate_rect(Vertex *rect, F32 x, F32 y, F32 width, F32 height, Color4 color);
 
-//
-// @param[out] rect Output array of vertexes
-//
-size_t generate_rect_with_atlas(
+//!
+//! @param[out] rect Output array of vertexes
+//!
+U32 generate_rect_with_atlas(
     Vertex *rect, F32 x, F32 y, F32 width, F32 height, Rect_F32 atlas_location, Atlas *altas, Color4 color);
 
+//!
+//! @param[out] vertexes Array of preallocated geometry-buffer to which this function will write.
+//!
+//! @param[in] tilemap Information about tilemap sizes, pixel-count and etc.
+//!
+//! @param[in] atlas Information about count of pixels on whole image (used for generating UVs properly).
+//!
+U32 generate_geometry_from_tilemap(Vertex *vertexes, U32 vertexes_capacity, Tilemap *tilemap, F32 origin_x, F32 origin_y, Color4 color, Atlas *atlas);
 
 //
 // MM (memory management):
 //
+
+//! @todo(gr3yknigh1): Add namespace `mm` back [2025/04/24] #renaming
 
 struct Buffer_View {
     Byte *data;
@@ -310,15 +356,15 @@ zero_structs(Ty *p, U64 count)
     zero_memory(reinterpret_cast<void *>(p), sizeof(*p) * count);
 }
 
-// TODO(gr3yknigh1): Replace with typed-enum class [2025/04/07]
+//! @todo(gr3yknigh1): Replace with typed-enum class [2025/04/07] #refactor
 typedef S32 Allocate_Options;
 
 #define ALLOCATE_NO_OPTS        MAKE_FLAG(0)
 #define ALLOCATE_ZERO_MEMORY    MAKE_FLAG(1)
 
-//
-// @brief Base version of `allocate` function. Calls to platform specific allocation function.
-//
+//!
+//! @brief Base version of `allocate` function. Calls to platform specific allocation function.
+//!
 void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
 template <typename Ty>
@@ -348,7 +394,6 @@ struct Static_Arena {
 
 Static_Arena make_static_arena(Size capacity);
 bool         destroy(Static_Arena *arena);
-
 void *       allocate(Static_Arena *arena, Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
 template <typename Ty>
@@ -384,14 +429,14 @@ bool reset(Stack_View *view);
 
 void *allocate(Stack_View *view, Size size);
 
-//
-// @brief Initializes a view in stack-like data-block, and do not own it. Free it yourself!
-//
+//!
+//! @brief Initializes a view in stack-like data-block, and do not own it. Free it yourself!
+//!
 Stack_View make_stack_view(void *data, Size capacity);
 
-//
-// @brief Allocates new data-block and initializes a view in stack-like data-block, and do not own it. Free it yourself!
-//
+//!
+//! @brief Allocates new data-block and initializes a view in stack-like data-block, and do not own it. Free it yourself!
+//!
 Stack_View make_stack_view(Size capacity);
 
 struct Block {
@@ -402,34 +447,33 @@ struct Block {
 };
 
 struct Block_Allocator {
-
-    //
-    // @brief Basiclly is linked-list.
-    //
+    //!
+    //! @brief Basiclly is linked-list.
+    //!
     struct {
         Block *head;
         Block *tail;
         U64 count;
     } blocks;
 
-    //
-    // @brief If greater than zero, tells the allocator to allocate blocks with fixed size, which makes it basiclly
-    // behave like pool allocator. If equals zero, blocks will be allocated with specified size aligned to page size.
-    //
+    //!
+    //! @brief If greater than zero, tells the allocator to allocate blocks with fixed size, which makes it basiclly
+    //! behave like pool allocator. If equals zero, blocks will be allocated with specified size aligned to page size.
+    //!
     Size block_fixed_size;
 
-    //
-    // @brief If greater than zero, sets limit on count of block, which can be allocated. If zero, there will be no
-    // limit to block allocation.
-    //
+    //!
+    //! @brief If greater than zero, sets limit on count of block, which can be allocated. If zero, there will be no
+    //! limit to block allocation.
+    //!
     U64 block_count_limit;
 };
 
 Block_Allocator make_block_allocator();
 
-//
-// @brief Pre-allocates specified amount of blocks with specified size.
-//
+//!
+//! @brief Pre-allocates specified amount of blocks with specified size.
+//!
 Block_Allocator make_block_allocator(U64 blocks_count, Size block_size, Size block_fixed_size = 0, U64 block_count_limit = 0);
 
 void *allocate(Block_Allocator *allocator, Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
@@ -447,6 +491,8 @@ void *first(Block_Allocator *allocator);
 void *next(Block_Allocator *allocator, void *data);
 
 bool destroy_block_allocator(Block_Allocator *allocator);
+
+//! @todo(gr3yknigh1): Add namespace `sane`. [2025/04/24] #renaming
 
 //
 // Strings:
@@ -753,7 +799,11 @@ str16_view_is_equals(const Str16_View a, const char *str) noexcept
     return str16_view_is_equals(a, b);
 }
 
+//
+// Etc:
+//
 
+int get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y);
 
 //
 // OS:
