@@ -493,13 +493,12 @@ enum struct Asset_Location_Type {
 };
 
 struct File_Info {
-    FILE  *handle;
+    FILE *handle;
     Size size;
-    Str8   path;
+    Str8 path;
 
     ~File_Info(void) noexcept {}
 };
-
 
 struct Asset_Location {
     Asset_Location_Type type;
@@ -807,33 +806,6 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
         tilemap_vertexes, tilemap->tiles_count() * TILEMAP_VERTEX_COUNT_PER_TILE, //! @todo #refactor
         tilemap, tilemap_position_x, tilemap_position_y,
         {255, 255, 255, 255}, &tilemap_atlas);
-
-#if 0
-    for (int col_idx = 0; col_idx < tilemap->col_count; ++col_idx) {
-        for (int row_idx = 0; row_idx < tilemap->row_count; ++row_idx) {
-
-            float tile_x = tilemap_position_x + col_idx * 100; // tilemap->tile_x_pixel_count;
-            float tile_y = tilemap_position_y + row_idx * 100; // tilemap->tile_y_pixel_count;
-
-
-            int index_offset = get_offset_from_coords_of_2d_grid_array_rm(tilemap->col_count, col_idx, row_idx);
-            float index = static_cast<float>(tilemap->indexes[index_offset]);
-
-            Rect_F32 tile_atlas_location{
-                /* x: */ floorf(index / tilemap->col_count) * static_cast<float>(tilemap->tile_x_pixel_count),
-                /* y: */ floorf(fmodf(index, static_cast<float>(tilemap->col_count))) * static_cast<float>(tilemap->tile_y_pixel_count),
-                /* width: */ static_cast<float>(tilemap->tile_x_pixel_count),
-                /* height: */ static_cast<float>(tilemap->tile_y_pixel_count)
-            };
-
-            static Color4 tile_color = { 200, 100, 0, 255 };
-
-            tilemap_vertexes_count += generate_rect_with_atlas(
-                tilemap_vertexes + tilemap_vertexes_count, tile_x, tile_y, 100, 100 /* static_cast<float>(tilemap->tile_x_pixel_count), static_cast<float>(tilemap->tile_y_pixel_count) */, tile_atlas_location, &tilemap_atlas, tile_color);
-
-        }
-    }
-#endif
 
     //
     // Game mainloop:
@@ -1304,6 +1276,12 @@ bool
 make_vertex_buffer_layout(Static_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity)
 {
     ZERO_STRUCT(layout);
+
+    //!
+    //! @todo(gr3yknigh1): Make it so on input user provide full description of layout.
+    //! vertex_buffer_layout_push_* functions require you to have whole buffer until you
+    //! call vertex_buffer_layout_build_attrs [2025/04/25]
+    //!
 
     layout->attributes = allocate_structs<Vertex_Buffer_Attribute>(
         arena, attributes_capacity, ALLOCATE_ZERO_MEMORY);

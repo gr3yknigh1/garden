@@ -50,7 +50,7 @@ glm_library: F[[str], str] = lambda build_type: join(glm_output_dir(build_type),
 #
 
 @define_task()
-def build(c: Context, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False, perf=False):
+def build(c: Context, build_type=default_build_type, clean=False, reconfigure=False, only_preprocessor=False, perf=False, debug_allocations=True):
     """Builds entire project.
     """
     if clean:
@@ -128,6 +128,9 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
     if perf:
         defines["PERF_ENABLED"] = 1
 
+    if debug_allocations:
+        defines["GARDEN_TRACK_ALLOCATIONS"] = 1
+
     #
     # Gameplay code:
     #
@@ -169,6 +172,6 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
             only_preprocessor=only_preprocessor, unicode_support=True
         )
     else:
-        c.echo("W: Skipping runtime code because {} is busy...".format(c.quoted(garden_output_exe)))
+        c.echo("W: Skipping runtime code because {} is busy...".format(c.quote(garden_output_exe)))
 
     # link.exe topdown.obj /MACHINE:X64 /SUBSYSTEM:WINDOWS /Fe:topdown.exe

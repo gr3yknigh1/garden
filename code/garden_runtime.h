@@ -12,10 +12,11 @@
 
 #include <stdio.h>
 
+#include <source_location>
+
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
-
 
 #if !defined(MAKE_FLAG)
     #define MAKE_FLAG(INDEX) (1 << (INDEX))
@@ -213,6 +214,34 @@ struct Tilemap {
     constexpr int tiles_count(void) noexcept { return this->row_count * this->col_count; }
 };
 
+//
+// Debug (dbg):
+//
+
+//!
+//! @brief Basicly replacement for `std::source_location`.
+//!
+//! @todo(gr3yknigh1) Maybe replace with `std::source_location`? [2025/04/25]
+//!
+struct Source_Location {
+    //!
+    //! @brief Name of the file (__FILE__).
+    //!
+    ZStr8 file_name;
+
+    //!
+    //! @brief Number of the line (__LINE__).
+    //!
+    U32 line;
+
+    //!
+    //! @brief Decorated function name (__FUNCDNAME__).
+    //!
+    ZStr8 function_name;
+
+
+    constexpr Source_Location(std::source_location location) noexcept : file_name(location.file_name()), line(location.line()), function_name(location.function_name()) {}
+};
 
 //
 // Graphics (gfx):
@@ -368,10 +397,19 @@ typedef S32 Allocate_Options;
 #define ALLOCATE_NO_OPTS        MAKE_FLAG(0)
 #define ALLOCATE_ZERO_MEMORY    MAKE_FLAG(1)
 
-//!
-//! @brief Base version of `allocate` function. Calls to platform specific allocation function.
-//!
-void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
+#if defined(GARDEN_TRACK_ALLOCATIONS)
+
+    //!
+    //! @brief Base version of `allocate` function. Calls to platform specific allocation function.
+    //!
+    void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS, Source_Location location = Source_Location(std::source_location::current()));
+
+#else
+    //!
+    //! @brief Base version of `allocate` function. Calls to platform specific allocation function.
+    //!
+    void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
+#endif
 
 template <typename Ty>
 inline Ty *
@@ -842,6 +880,30 @@ void      lexer_skip_whitespace(Lexer *lexer);
 bool      lexer_is_endline(Lexer *lexer, bool *is_crlf = nullptr);
 bool      lexer_is_end(Lexer *lexer);
 
+//
+// Containers:
+//
+
+#if 0
+
+template<typename Ty>
+struct Linked_List_Node {
+    Linked_List_Node *next;
+    Linked_List_Node *previous;
+
+    Ty value;
+};
+
+template <typename Ty>
+struct Linked_List {
+    Linked_List_Node<Ty> *head;
+    Linked_List_Node<Ty> *tail;
+    U64 count;
+};
+
+Linked_List make_linked_list(void) noexcept;
+
+#endif
 
 //
 // Etc:

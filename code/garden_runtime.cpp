@@ -16,13 +16,6 @@
 #include <memory>
 
 #include "garden_runtime.h"
-
-#if defined(_WIN32)
-    #include "garden_runtime_win32.cpp"
-#else
-    #error "Unhandled platform! No runtime was included"
-#endif
-
 #include "media/aseprite.cpp"
 
 U32
@@ -422,7 +415,11 @@ copy_memory(void *dst, const void *src, Size size)
 }
 
 void *
+#if defined(GARDEN_TRACK_ALLOCATIONS)
+allocate(size_t size, Allocate_Options options, [[maybe_unused]] Source_Location location)
+#else
 allocate(size_t size, Allocate_Options options)
+#endif
 {
     void *result = std::malloc(size);
     if (result && HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
@@ -756,3 +753,9 @@ get_file_size(FILE *file)
 
     return file_size;
 }
+
+#if defined(_WIN32)
+    #include "garden_runtime_win32.cpp"
+#else
+    #error "Unhandled platform! No runtime was included"
+#endif
