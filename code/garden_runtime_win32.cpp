@@ -593,7 +593,7 @@ struct Shader_Compile_Result {
 
 Shader_Compile_Result compile_shader(char *source_code, Size file_size);
 
-static void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
+void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
 
 #if GARDEN_GAMEPLAY_CODE == 1
 
@@ -766,7 +766,8 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     Watch_Context watch_context;
     assert(make_watch_context(&watch_context, &reload_context, LR"(P:\garden)", asset_watch_routine));
 
-    assert(watch_context_launch_thread(&watch_context));
+    HANDLE watch_thread = INVALID_HANDLE_VALUE;
+    assert(watch_context_launch_thread(&watch_context, &watch_thread));
 
     //
     // Setup tilemap atlas:
@@ -1023,9 +1024,16 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
         frame_counter++;
     }
 
+
     gameplay.on_fini(&platform_context, game_context);
 
     unload_gameplay(&gameplay);
+
+    //
+    // TODO(gr3yknigh1): Make ReadDirectoryChangesW asyncronous, so you
+    // can set the flag to stop the worker: watch_context.should_stop.test_and_set();. [2025/05/25]
+    //
+    //WaitForSingleObject(watch_thread, INFINITE); // TODO(gr3yknigh1): Wait for thread [2025/02/23]
 
     glDeleteProgram(basic_shader->program_id); // @cleanup Replace with asset_shader_free
 
@@ -1036,7 +1044,6 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     assert(FreeLibrary(opengl_module));
     CloseWindow(window); // TODO(gr3yknigh1): why it fails? [2025/02/23]
 
-    // WaitForSingleObject(watch_thread, INFINITE); // TODO(gr3yknigh1): Wait for thread [2025/02/23]
 
     assert(asset_store_destroy(&store));
 
@@ -1703,7 +1710,10 @@ watch_thread_worker(PVOID param)
     // NOTE(gr3yknigh1): Clunky! [2025/03/10]
     copy_memory(file_full_path_buffer, static_cast<const void *>(context->target_dir), target_dir_buffer_size);
 
+
+
     while (!context->should_stop.test()) {
+
         DWORD bytes_returned = 0;
         assert(ReadDirectoryChangesW(
             watch_dir, file_notify_info, sizeof(*file_notify_info) * file_notify_info_capacity,
@@ -2073,7 +2083,7 @@ bool make_watch_context(Watch_Context *context, void *parameter, const wchar_t *
         //
 
         DWORD image_path_buffer_size = MAX_PATH * sizeof(wchar_t);
-        wchar_t *image_path_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, image_path_buffer_size);
+        wchar_t *image_path_buffer = static_cast<wchar_t *>(allocate(image_path_buffer_size, ALLOCATE_ZERO_MEMORY));
         assert(image_path_buffer);
 
         DWORD bytes_written = GetModuleFileNameW(nullptr, image_path_buffer, image_path_buffer_size);
@@ -2083,11 +2093,11 @@ bool make_watch_context(Watch_Context *context, void *parameter, const wchar_t *
         Str16_View image_directory_view;
         assert(path16_get_parent(image_path_buffer, bytes_written, &image_directory_view));
 
-        wchar_t *image_directory_buffer = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, (image_directory_view.length + 1) * sizeof(*image_directory_view.data));
+        wchar_t *image_directory_buffer = static_cast<wchar_t *>(allocate((image_directory_view.length + 1) * sizeof(*image_directory_view.data)));
         assert(image_directory_buffer);
 
         assert(str16_view_copy_to_nullterminated(image_directory_view, image_directory_buffer, (image_directory_view.length + 1) * sizeof(*image_directory_view.data)));
-        assert(HeapFree(GetProcessHeap(), 0, image_path_buffer));
+        deallocate(image_path_buffer);
 
         target_dir = image_directory_buffer;
     }
@@ -2112,7 +2122,7 @@ watch_context_launch_thread(Watch_Context *context, PHANDLE out_thread_handle)
     return watch_thread_id;
 }
 
-static void
+void
 asset_watch_routine([[maybe_unused]] Watch_Context *watch_context, const Str16_View file_name, File_Action action, void *parameter)
 {
     if (action != File_Action::Modified) {
