@@ -622,11 +622,8 @@ DllMain([[maybe_unused]] HINSTANCE instance, DWORD reason, [[maybe_unused]] LPVO
 #endif
 
 int WINAPI
-wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, int cmd_show)
+wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[maybe_unused]] PWSTR command_line, int cmd_show)
 {
-    (void)previous_instance;
-    (void)command_line;
-
     //
     // Window initialization:
     //
@@ -1043,9 +1040,10 @@ wWinMain(HINSTANCE instance, HINSTANCE previous_instance, PWSTR command_line, in
 
     assert(asset_store_destroy(&store));
 
+    dump_allocation_records();
+
     return 0;
 }
-
 
 LRESULT CALLBACK
 win32_window_message_handler(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
@@ -1690,18 +1688,16 @@ watch_thread_worker(PVOID param)
         nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     assert(watch_dir && watch_dir != INVALID_HANDLE_VALUE);
 
-    DWORD file_notify_info_buffer_size = sizeof(FILE_NOTIFY_INFORMATION) * 1024;
-    FILE_NOTIFY_INFORMATION *file_notify_info = static_cast<FILE_NOTIFY_INFORMATION *>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, file_notify_info_buffer_size));
+    U32 file_notify_info_capacity = 1024;
+    FILE_NOTIFY_INFORMATION *file_notify_info = allocate_structs<FILE_NOTIFY_INFORMATION>(file_notify_info_capacity, ALLOCATE_ZERO_MEMORY);
     assert(file_notify_info);
-    // TODO(gr3yknigh1): Fix allocation strategy here. Maybe try to
-    // iterate in fixed buffer? [2025/03/01]
 
     // TODO(gr3yknigh1): Replace with String_Builder [2025/03/10]
     uint64_t target_dir_length = str16_get_length(context->target_dir);
     Size target_dir_buffer_size = target_dir_length * sizeof(*context->target_dir);
     Size file_full_path_buffer_capacity = (target_dir_length + MAX_PATH) * sizeof(*context->target_dir);
 
-    void *file_full_path_buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, file_full_path_buffer_capacity);
+    void *file_full_path_buffer = allocate(file_full_path_buffer_capacity, ALLOCATE_ZERO_MEMORY);
     assert(file_full_path_buffer && "Buy more RAM");
 
     // NOTE(gr3yknigh1): Clunky! [2025/03/10]
@@ -1710,8 +1706,8 @@ watch_thread_worker(PVOID param)
     while (!context->should_stop.test()) {
         DWORD bytes_returned = 0;
         assert(ReadDirectoryChangesW(
-            watch_dir, file_notify_info, file_notify_info_buffer_size, true,
-            FILE_NOTIFY_CHANGE_LAST_WRITE, &bytes_returned, nullptr, nullptr
+            watch_dir, file_notify_info, sizeof(*file_notify_info) * file_notify_info_capacity,
+            true, FILE_NOTIFY_CHANGE_LAST_WRITE, &bytes_returned, nullptr, nullptr
         ));
 
         FILE_NOTIFY_INFORMATION *current_notify_info = file_notify_info;
@@ -1757,8 +1753,9 @@ watch_thread_worker(PVOID param)
         }
     }
 
-    assert(HeapFree(GetProcessHeap(), 0, file_full_path_buffer));
-    assert(HeapFree(GetProcessHeap(), 0, file_notify_info));
+
+    deallocate(file_full_path_buffer);
+    deallocate(file_notify_info);
 }
 
 void

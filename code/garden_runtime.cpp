@@ -14,6 +14,9 @@
 #include <cstring>
 
 #include <memory>
+#include <list>
+#include <unordered_map>
+#include <thread>
 
 #include "garden_runtime.h"
 #include "media/aseprite.cpp"
@@ -414,12 +417,8 @@ copy_memory(void *dst, const void *src, Size size)
     std::memcpy(dst, src, size);
 }
 
-void *
-#if defined(GARDEN_TRACK_ALLOCATIONS)
-allocate(size_t size, Allocate_Options options, [[maybe_unused]] Source_Location location)
-#else
-allocate(size_t size, Allocate_Options options)
-#endif
+static inline void *
+allocate_impl(Size size, Allocate_Options options)
 {
     void *result = std::malloc(size);
     if (result && HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
@@ -428,9 +427,72 @@ allocate(size_t size, Allocate_Options options)
     return result;
 }
 
+std::list<Allocation_Record> *
+get_allocation_records(void)
+{
+    static std::list<Allocation_Record> allocation_records{};
+    return &allocation_records;
+}
+
+bool
+dump_allocation_records(bool do_hex_dump)
+{
+    std::list<Allocation_Record> *records = get_allocation_records();
+
+    Size total_memory = 0;
+
+    for (const Allocation_Record &record : *records) {
+        printf("Allocation_Record(options=(%d) size=(%lld) result=(%p) location.file_name=(%s) location.line=(%u) location.function_name=(%s))\n",
+            record.options, record.size, record.result, record.location.file_name, record.location.line, record.location.function_name
+        );
+
+        total_memory += record.size;
+
+        if (do_hex_dump) {
+            hex_dump(record.result, record.size);
+            puts("");
+        }
+    }
+
+    printf("Total memory: %lld bytes\n", total_memory);
+
+    return total_memory > 0;
+}
+
+#if defined(GARDEN_TRACK_ALLOCATIONS)
+void *
+allocate(size_t size, Allocate_Options options, [[maybe_unused]] Source_Location location)
+{
+    void *result = allocate_impl(size, options);
+
+    Allocation_Record record {options, size, result, location};
+
+    std::list<Allocation_Record> *allocation_records = get_allocation_records();
+    allocation_records->push_back(record);
+
+    return result;
+}
+#else
+void *
+allocate(size_t size, Allocate_Options options)
+{
+    return allocate_impl(size, options);
+}
+#endif
+
 bool
 deallocate(void *p)
 {
+
+#if defined(GARDEN_TRACK_ALLOCATIONS)
+
+    std::list<Allocation_Record> *allocation_records = get_allocation_records();
+    assert(allocation_records->remove_if([p](Allocation_Record &record) {
+        return record.result == p;
+    }) == 1);
+
+#endif
+
     // TODO(gr3yknigh1): Use platform functions for allocations [2025/04/07]
     std::free(p);
     return true;
@@ -753,6 +815,33 @@ get_file_size(FILE *file)
 
     return file_size;
 }
+
+
+void
+hex_dump(void *buffer, Size buffer_size)
+{
+
+    for (Size i = 0; i < buffer_size; i += 16) {
+        printf("%06llx: ", i);
+
+        for (Size j = 0; j < 16; j++) {
+            if (i + j < buffer_size) {
+                printf("%02x ", static_cast<Byte *>(buffer)[i + j]);
+            } else {
+                printf("   ");
+            }
+        }
+
+        printf(" ");
+        for (Size j = 0; j < 16; j++) {
+            if (i + j < buffer_size) {
+                printf("%c", isprint(static_cast<Byte *>(buffer)[i + j]) ? static_cast<Byte *>(buffer)[i + j] : '.');
+            }
+        }
+        printf("\n");
+    }
+}
+
 
 #if defined(_WIN32)
     #include "garden_runtime_win32.cpp"

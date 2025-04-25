@@ -13,6 +13,7 @@
 #include <stdio.h>
 
 #include <source_location>
+#include <list>
 
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
@@ -404,26 +405,41 @@ typedef S32 Allocate_Options;
     //!
     void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS, Source_Location location = Source_Location(std::source_location::current()));
 
+    template <typename Ty>
+    inline Ty *
+    allocate_struct(Allocate_Options options = ALLOCATE_NO_OPTS, Source_Location location = Source_Location(std::source_location::current()))
+    {
+        return static_cast<Ty *>(allocate(sizeof(Ty), options, location));
+    }
+
+    template <typename Ty>
+    inline Ty *
+    allocate_structs(U64 count, Allocate_Options options = ALLOCATE_NO_OPTS, Source_Location location = Source_Location(std::source_location::current()))
+    {
+        return static_cast<Ty *>(allocate(sizeof(Ty) * count, options, location));
+    }
+
 #else
     //!
     //! @brief Base version of `allocate` function. Calls to platform specific allocation function.
     //!
     void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
+
+    template <typename Ty>
+    inline Ty *
+    allocate_struct(Allocate_Options options = ALLOCATE_NO_OPTS)
+    {
+        return static_cast<Ty *>(allocate(sizeof(Ty), options));
+    }
+
+    template <typename Ty>
+    inline Ty *
+    allocate_structs(U64 count, Allocate_Options options = ALLOCATE_NO_OPTS)
+    {
+        return static_cast<Ty *>(allocate(sizeof(Ty) * count, options));
+    }
 #endif
 
-template <typename Ty>
-inline Ty *
-allocate_struct(Allocate_Options options = ALLOCATE_NO_OPTS)
-{
-    return static_cast<Ty *>(allocate(sizeof(Ty), options));
-}
-
-template <typename Ty>
-inline Ty *
-allocate_structs(U64 count, Allocate_Options options = ALLOCATE_NO_OPTS)
-{
-    return static_cast<Ty *>(allocate(sizeof(Ty) * count, options));
-}
 
 bool deallocate(void *p);
 
@@ -536,6 +552,37 @@ void *next(Block_Allocator *allocator, void *data);
 
 bool destroy_block_allocator(Block_Allocator *allocator);
 
+
+struct Allocation_Record {
+    Allocate_Options options;
+    Size size;
+    void *result;
+    Source_Location location;
+};
+
+//!
+//! @brief Returns pointer to allocation record list which was made with `allocate` function. [2025/04/25]
+//!
+//! @todo(gr3yknigh1): Make it per-thread. [2025/04/25]
+//!
+std::list<Allocation_Record> *get_allocation_records(void);
+
+//!
+//! @brief Dump all records into console.
+//!
+//! @return True if any allocations was dumped into console.
+//!
+//! @todo(gr3yknigh1): Add option to dump it all into disk. [2025/04/25]
+//!
+bool dump_allocation_records(bool do_hex_dump = false);
+
+//!
+//! @brief Dumps into console hex-view of the memory (formatted).
+//!
+//! @todo(gr3yknigh1): Add option to dump it all to other place (file for example) [2025/04/25]
+//!
+void hex_dump(void *buffer, U64 buffer_length);
+
 //! @todo(gr3yknigh1): Add namespace `sane`. [2025/04/24] #renaming
 
 //
@@ -609,7 +656,6 @@ public:
     Str8(Str8 &&other) noexcept
         : data(std::exchange(other.data, nullptr)), length(std::exchange(other.length, 0))
     { }
-
 
     Str8 &
     operator=(const Str8& other) noexcept
@@ -885,7 +931,6 @@ bool      lexer_is_end(Lexer *lexer);
 //
 
 #if 0
-
 template<typename Ty>
 struct Linked_List_Node {
     Linked_List_Node *next;
@@ -899,10 +944,27 @@ struct Linked_List {
     Linked_List_Node<Ty> *head;
     Linked_List_Node<Ty> *tail;
     U64 count;
+
+    constexpr
+    Linked_List(void) noexcept
+        : head(nullptr), tail(nullptr), count(0)
+    {
+    }
+
+    void
+    push_back(Ty new_element) noexcept
+    {
+        if (!this->head) {
+            assert(!this->count);
+            this->head = allocate();
+            this->tail = this->head;
+        }
+
+        insert_allocated(this->head);
+    }
+
+    static Linked_List_
 };
-
-Linked_List make_linked_list(void) noexcept;
-
 #endif
 
 //
