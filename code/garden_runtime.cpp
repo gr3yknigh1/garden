@@ -116,8 +116,8 @@ get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y)
     return width * y + x;
 }
 
-Static_Arena
-make_static_arena(Size capacity)
+mm::Static_Arena
+mm::make_static_arena(Size capacity)
 {
     Static_Arena arena;
 
@@ -369,7 +369,7 @@ mm::arena_pop(mm::Arena *arena, void *data)
 #endif
 
 Size
-reset(Static_Arena *arena)
+mm::reset(mm::Static_Arena *arena)
 {
     Size was_occupied = arena->occupied;
     arena->occupied = 0;
@@ -377,7 +377,7 @@ reset(Static_Arena *arena)
 }
 
 void *
-allocate(Static_Arena *arena, Size size, Allocate_Options options)
+mm::allocate(mm::Static_Arena *arena, Size size, mm::Allocate_Options options)
 {
     if (arena == nullptr) {
         return nullptr;
@@ -387,10 +387,10 @@ allocate(Static_Arena *arena, Size size, Allocate_Options options)
         return nullptr;
     }
 
-    void *allocated = get_offset(arena->data, arena->occupied);
+    void *allocated = mm::get_offset(arena->data, arena->occupied);
 
     if (HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
-        zero_memory(allocated, size);
+        mm::zero_memory(allocated, size);
     }
 
     arena->occupied += size;
@@ -398,50 +398,54 @@ allocate(Static_Arena *arena, Size size, Allocate_Options options)
 }
 
 bool
-destroy(Static_Arena *arena)
+mm::destroy(mm::Static_Arena *arena)
 {
-    bool result = deallocate(arena->data);
-    zero_struct<Static_Arena>(arena);
+    bool result = mm::deallocate(arena->data);
+    mm::zero_struct<mm::Static_Arena>(arena);
     return result;
 }
 
 void
-zero_memory(void *p, Size size)
+mm::zero_memory(void *p, Size size)
 {
-    std::memset(p, 0, size);
+    for (Size i = 0; i < size; ++i) {
+        static_cast<Byte *>(p)[i] = 0;
+    }
 }
 
 void
-copy_memory(void *dst, const void *src, Size size)
+mm::copy_memory(void *dst, const void *src, Size size)
 {
-    std::memcpy(dst, src, size);
+    for (Size index = 0; index < size; ++index) {
+        static_cast<Byte *>(dst)[index] = static_cast<const Byte *>(src)[index];
+    }
 }
 
 static inline void *
-allocate_impl(Size size, Allocate_Options options)
+allocate_impl(Size size, mm::Allocate_Options options)
 {
     void *result = std::malloc(size);
     if (result && HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
-        zero_memory(result, size);
+        mm::zero_memory(result, size);
     }
     return result;
 }
 
-std::list<Allocation_Record> *
-get_allocation_records(void)
+std::list<mm::Allocation_Record> *
+mm::get_allocation_records(void)
 {
     static std::list<Allocation_Record> allocation_records{};
     return &allocation_records;
 }
 
 bool
-dump_allocation_records(bool do_hex_dump)
+mm::dump_allocation_records(bool do_hex_dump)
 {
-    std::list<Allocation_Record> *records = get_allocation_records();
+    std::list<Allocation_Record> *records = mm::get_allocation_records();
 
     Size total_memory = 0;
 
-    for (const Allocation_Record &record : *records) {
+    for (const mm::Allocation_Record &record : *records) {
         printf("Allocation_Record(options=(%d) size=(%lld) result=(%p) location.file_name=(%s) location.line=(%u) location.function_name=(%s))\n",
             record.options, record.size, record.result, record.location.file_name, record.location.line, record.location.function_name
         );
@@ -449,7 +453,7 @@ dump_allocation_records(bool do_hex_dump)
         total_memory += record.size;
 
         if (do_hex_dump) {
-            hex_dump(record.result, record.size);
+            mm::hex_dump(record.result, record.size);
             puts("");
         }
     }
@@ -459,55 +463,30 @@ dump_allocation_records(bool do_hex_dump)
     return total_memory > 0;
 }
 
-#if defined(GARDEN_TRACK_ALLOCATIONS)
 void *
-allocate(size_t size, Allocate_Options options, [[maybe_unused]] Source_Location location)
-{
-    void *result = allocate_impl(size, options);
-
-    Allocation_Record record {options, size, result, location};
-
-    std::list<Allocation_Record> *allocation_records = get_allocation_records();
-    allocation_records->push_back(record);
-
-    return result;
-}
-#else
-void *
-allocate(size_t size, Allocate_Options options)
+mm::allocate(Size size, mm::Allocate_Options options)
 {
     return allocate_impl(size, options);
 }
-#endif
 
 bool
-deallocate(void *p)
+mm::deallocate(void *p)
 {
-
-#if defined(GARDEN_TRACK_ALLOCATIONS)
-
-    std::list<Allocation_Record> *allocation_records = get_allocation_records();
-    assert(allocation_records->remove_if([p](Allocation_Record &record) {
-        return record.result == p;
-    }) == 1);
-
-#endif
-
     // TODO(gr3yknigh1): Use platform functions for allocations [2025/04/07]
     std::free(p);
     return true;
 }
 
-Block_Allocator
-make_block_allocator(void)
+mm::Block_Allocator
+mm::make_block_allocator(void)
 {
-    Block_Allocator result;
-    zero_struct(&result);
+    mm::Block_Allocator result;
+    mm::zero_struct(&result);
     return result;
 }
 
-Block_Allocator
-make_block_allocator(U64 blocks_count, Size block_size, Size block_fixed_size, U64 block_count_limit)
+mm::Block_Allocator
+mm::make_block_allocator(U64 blocks_count, Size block_size, Size block_fixed_size, U64 block_count_limit)
 {
     assert(blocks_count && block_size);
 
@@ -581,7 +560,7 @@ make_block_allocator(U64 blocks_count, Size block_size, Size block_fixed_size, U
 
 
 void *
-allocate(Block_Allocator *allocator, Size size, Allocate_Options options)
+mm::allocate(mm::Block_Allocator *allocator, Size size, mm::Allocate_Options options)
 {
     assert(allocator && size);
 
@@ -590,11 +569,11 @@ allocate(Block_Allocator *allocator, Size size, Allocate_Options options)
     }
 
     FOR_LINKED_LIST(it, &allocator->blocks) {
-        void *result = allocate(&it->stack, size);
+        void *result = mm::allocate(&it->stack, size);
         if (result != nullptr) {
 
             if (HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
-                zero_memory(result, size);
+                mm::zero_memory(result, size);
             }
 
             return result;
@@ -624,8 +603,8 @@ allocate(Block_Allocator *allocator, Size size, Allocate_Options options)
     // for preallocated blocks for grow. We need add function like `block_allocator_pre_allocate(block_size, block_count);` in order to make it more compact.
     // [2025/03/10]
     //
-    Block *new_block = allocate_struct<Block>();
-    zero_struct(new_block);
+    mm::Block *new_block = mm::allocate_struct<mm::Block>();
+    mm::zero_struct(new_block);
 
     if (allocator->blocks.count > 0) {
         allocator->blocks.tail->next = new_block;
@@ -637,15 +616,15 @@ allocate(Block_Allocator *allocator, Size size, Allocate_Options options)
     allocator->blocks.count++;
 
     if (allocator->block_fixed_size) {
-        new_block->stack = make_stack_view(allocator->block_fixed_size);
+        new_block->stack = mm::make_stack_view(allocator->block_fixed_size);
     } else {
-        new_block->stack = make_stack_view(page_align(size));
+        new_block->stack = mm::make_stack_view(mm::page_align(size));
     }
 
-    void *result = allocate(&new_block->stack, size);
+    void *result = mm::allocate(&new_block->stack, size);
 
     if (result && HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
-        zero_memory(result, size);
+        mm::zero_memory(result, size);
     }
 
     return result;
@@ -653,7 +632,7 @@ allocate(Block_Allocator *allocator, Size size, Allocate_Options options)
 
 
 bool
-destroy_block_allocator(Block_Allocator *allocator)
+mm::destroy_block_allocator(mm::Block_Allocator *allocator)
 {
     assert(allocator);
 
@@ -667,21 +646,21 @@ destroy_block_allocator(Block_Allocator *allocator)
     bool result = true;
 
     if (allocator->block_fixed_size) {
-        result = deallocate( static_cast<void *>( allocator->blocks.head->stack.data ) );
+        result = mm::deallocate( static_cast<void *>( allocator->blocks.head->stack.data ) );
         if (result) {
-            result = deallocate( static_cast<void *>( allocator->blocks.head ) );
+            result = mm::deallocate( static_cast<void *>( allocator->blocks.head ) );
         }
     } else {
 
         FOR_LINKED_LIST(it, &allocator->blocks) {
-            result = deallocate(it->stack.data);
+            result = mm::deallocate(it->stack.data);
 
             if (result && it->previous != nullptr) {
-                result = deallocate( static_cast<void *>( it->previous ) );
+                result = mm::deallocate( static_cast<void *>( it->previous ) );
             }
 
             if (result && it->next == nullptr) {
-                result = deallocate( static_cast<void *>( it ) );
+                result = mm::deallocate( static_cast<void *>( it ) );
                 break;
             }
 
@@ -696,7 +675,7 @@ destroy_block_allocator(Block_Allocator *allocator)
 }
 
 bool
-can_hold(Stack_View *view, Size size)
+mm::can_hold(mm::Stack_View *view, Size size)
 {
     assert(view && size);
     bool result = (size + view->occupied) <= view->capacity;
@@ -704,21 +683,21 @@ can_hold(Stack_View *view, Size size)
 }
 
 void *
-allocate(Stack_View *view, Size size)
+mm::allocate(mm::Stack_View *view, Size size)
 {
-    if (!can_hold(view, size)) {
+    if (!mm::can_hold(view, size)) {
         return nullptr;
     }
 
-    void *result = get_offset(view->data, view->occupied);
+    void *result = mm::get_offset(view->data, view->occupied);
     view->occupied += size;
     return result;
 }
 
-Stack_View
-make_stack_view(void *data, Size capacity)
+mm::Stack_View
+mm::make_stack_view(void *data, Size capacity)
 {
-    Stack_View result;
+    mm::Stack_View result;
     result.data = data;
     result.capacity = capacity;
     result.occupied = 0;
@@ -726,10 +705,10 @@ make_stack_view(void *data, Size capacity)
     return result;
 }
 
-Stack_View
-make_stack_view(Size capacity)
+mm::Stack_View
+mm::make_stack_view(Size capacity)
 {
-    Stack_View result;
+    mm::Stack_View result;
     result.data = allocate(capacity);
     result.capacity = capacity;
     result.occupied = 0;
@@ -737,36 +716,36 @@ make_stack_view(Size capacity)
 }
 
 Size
-align(Size size, Size alignment)
+mm::align(Size size, Size alignment)
 {
     Size result =  size + (alignment - size % alignment);
     return result;
 }
 
 Size
-page_align(Size size)
+mm::page_align(Size size)
 {
-    Size page_size = get_page_size();
+    Size page_size = mm::get_page_size();
 
-    Size result = align(size, page_size);
+    Size result = mm::align(size, page_size);
     return result;
 }
 
 bool
-reset(Stack_View *view)
+mm::reset(mm::Stack_View *view)
 {
     view->occupied = 0;
     return true;
 }
 
 bool
-reset(Block_Allocator *allocator, void *data)
+mm::reset(mm::Block_Allocator *allocator, void *data)
 {
     bool result = false;
 
     FOR_LINKED_LIST(it, &allocator->blocks) {
         if (it->stack.data == data) {
-            result = reset(&it->stack);
+            result = mm::reset(&it->stack);
             break;
         }
     }
@@ -775,7 +754,7 @@ reset(Block_Allocator *allocator, void *data)
 }
 
 void *
-first(Block_Allocator *allocator)
+mm::first(mm::Block_Allocator *allocator)
 {
     assert(allocator);
 
@@ -788,7 +767,7 @@ first(Block_Allocator *allocator)
 }
 
 void *
-next(Block_Allocator *allocator, void *data)
+mm::next(mm::Block_Allocator *allocator, void *data)
 {
     assert(allocator && data);
 
@@ -818,7 +797,7 @@ get_file_size(FILE *file)
 
 
 void
-hex_dump(void *buffer, Size buffer_size)
+mm::hex_dump(void *buffer, Size buffer_size)
 {
 
     for (Size i = 0; i < buffer_size; i += 16) {

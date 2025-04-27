@@ -14,6 +14,7 @@
 
 #include <source_location>
 #include <list>
+#include <memory>
 
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
@@ -351,7 +352,7 @@ U32 generate_geometry_from_tilemap(Vertex *vertexes, U32 vertexes_capacity, Tile
 // MM (memory management):
 //
 
-//! @todo(gr3yknigh1): Add namespace `mm` back [2025/04/24] #renaming
+namespace mm {
 
 struct Buffer_View {
     Byte *data;
@@ -393,52 +394,30 @@ zero_structs(Ty *p, U64 count)
 }
 
 //! @todo(gr3yknigh1): Replace with typed-enum class [2025/04/07] #refactor
-typedef S32 Allocate_Options;
 
-#define ALLOCATE_NO_OPTS        MAKE_FLAG(0)
-#define ALLOCATE_ZERO_MEMORY    MAKE_FLAG(1)
+#define ALLOCATE_NO_OPTS     MAKE_FLAG(0)
+#define ALLOCATE_ZERO_MEMORY MAKE_FLAG(1)
 
-#if defined(GARDEN_TRACK_ALLOCATIONS)
+typedef U32 Allocate_Options;
 
-    //!
-    //! @brief Base version of `allocate` function. Calls to platform specific allocation function.
-    //!
-    void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS, Source_Location location = Source_Location(std::source_location::current()));
+//!
+//! @brief Base version of `allocate` function. Calls to platform specific allocation function.
+//!
+void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
-    template <typename Ty>
-    inline Ty *
-    allocate_struct(Allocate_Options options = ALLOCATE_NO_OPTS, Source_Location location = Source_Location(std::source_location::current()))
-    {
-        return static_cast<Ty *>(allocate(sizeof(Ty), options, location));
-    }
+template <typename Ty>
+inline Ty *
+allocate_struct(Allocate_Options options = ALLOCATE_NO_OPTS)
+{
+    return static_cast<Ty *>(allocate(sizeof(Ty), options));
+}
 
-    template <typename Ty>
-    inline Ty *
-    allocate_structs(U64 count, Allocate_Options options = ALLOCATE_NO_OPTS, Source_Location location = Source_Location(std::source_location::current()))
-    {
-        return static_cast<Ty *>(allocate(sizeof(Ty) * count, options, location));
-    }
-
-#else
-    //!
-    //! @brief Base version of `allocate` function. Calls to platform specific allocation function.
-    //!
-    void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
-
-    template <typename Ty>
-    inline Ty *
-    allocate_struct(Allocate_Options options = ALLOCATE_NO_OPTS)
-    {
-        return static_cast<Ty *>(allocate(sizeof(Ty), options));
-    }
-
-    template <typename Ty>
-    inline Ty *
-    allocate_structs(U64 count, Allocate_Options options = ALLOCATE_NO_OPTS)
-    {
-        return static_cast<Ty *>(allocate(sizeof(Ty) * count, options));
-    }
-#endif
+template <typename Ty>
+inline Ty *
+allocate_structs(U64 count, Allocate_Options options = ALLOCATE_NO_OPTS)
+{
+    return static_cast<Ty *>(allocate(sizeof(Ty) * count, options));
+}
 
 
 bool deallocate(void *p);
@@ -552,7 +531,6 @@ void *next(Block_Allocator *allocator, void *data);
 
 bool destroy_block_allocator(Block_Allocator *allocator);
 
-
 struct Allocation_Record {
     Allocate_Options options;
     Size size;
@@ -582,6 +560,8 @@ bool dump_allocation_records(bool do_hex_dump = false);
 //! @todo(gr3yknigh1): Add option to dump it all to other place (file for example) [2025/04/25]
 //!
 void hex_dump(void *buffer, U64 buffer_length);
+
+} // namespace mm
 
 //! @todo(gr3yknigh1): Add namespace `sane`. [2025/04/24] #renaming
 
@@ -637,9 +617,9 @@ public:
         if (data_ && length_) {
             size_t data_buffer_size = this->length + 1;
 
-            void *data_buffer = allocate(data_buffer_size);
+            void *data_buffer = mm::allocate(data_buffer_size);
             assert(data_buffer);
-            zero_memory(data_buffer, data_buffer_size);
+            mm::zero_memory(data_buffer, data_buffer_size);
 
             str8_copy_to(data_buffer, data_, this->length, data_buffer_size);
 
@@ -685,7 +665,7 @@ public:
     destroy(void) noexcept
     {
         if (this->data) {
-            deallocate(static_cast<void *>(this->data));
+            mm::deallocate(static_cast<void *>(this->data));
         }
         this->length = 0;
     }
@@ -930,19 +910,31 @@ bool      lexer_is_end(Lexer *lexer);
 // Containers:
 //
 
-#if 0
-template<typename Ty>
+template<typename Value_Type>
 struct Linked_List_Node {
     Linked_List_Node *next;
     Linked_List_Node *previous;
+    Value_Type value;
 
-    Ty value;
+    constexpr
+    Linked_List_Node(const Value_Type &value_) noexcept
+        : next(nullptr), previous(nullptr), value(value_)
+    {
+    }
+
+    void
+    chain(Linked_List_Node<Value_Type> *next_node) noexcept
+    {
+        this->next = next_node;
+        next_node->previous = this;
+    }
 };
 
-template <typename Ty>
+template <typename Value_Type>
 struct Linked_List {
-    Linked_List_Node<Ty> *head;
-    Linked_List_Node<Ty> *tail;
+    Linked_List_Node<Value_Type> *head;
+    Linked_List_Node<Value_Type> *tail;
+
     U64 count;
 
     constexpr
@@ -951,21 +943,33 @@ struct Linked_List {
     {
     }
 
-    void
-    push_back(Ty new_element) noexcept
+    Linked_List(const Linked_List &) = delete;
+    Linked_List(Linked_List &&) = delete;
+
+    bool
+    push_back(const Value_Type &new_element) noexcept
     {
-        if (!this->head) {
-            assert(!this->count);
-            this->head = allocate();
-            this->tail = this->head;
+        Linked_List_Node<Value_Type> *new_node = mm::allocate_struct<Linked_List_Node<Value_Type>>(ALLOCATE_ZERO_MEMORY);
+
+        if (!new_node) {
+            return false;
         }
 
-        insert_allocated(this->head);
-    }
+        std::construct_at(new_node, new_element);
 
-    static Linked_List_
+        if (this->head == nullptr) {
+            assert(!this->count);
+            this->head = new_node;
+        } else {
+            this->tail->chain(new_node);
+        }
+
+        this->tail = new_node;
+        ++this->count;
+
+        return true;
+    }
 };
-#endif
 
 //
 // Etc:
@@ -981,6 +985,7 @@ Size get_file_size(FILE *file);
 //
 // Gameplay:
 //
+
 struct Input_State {
     F32 x_direction;
     F32 y_direction;
@@ -991,10 +996,10 @@ struct Platform_Context {
     Input_State input_state;
     Camera *camera;
 
-    Static_Arena persist_arena;
+    mm::Static_Arena persist_arena;
 
     // NOTE(gr3yknigh1): Platform runtime will call issue a draw call if vertexes_count > 0 [2025/03/03]
-    Static_Arena vertexes_arena;
+    mm::Static_Arena vertexes_arena;
     Vertex *vertexes;
     Size vertexes_count;
 };

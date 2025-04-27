@@ -2,39 +2,15 @@
 
 #include <math.h>   // sqrtf, powf
 
-#if !defined(UNICODE)
-    #define UNICODE
-#endif
-
-#if !defined(NOMINMAX)
-    #define NOMINMAX
-#endif
-
-#ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-#endif
-
-#include <windows.h>
-
-#if defined(far)
-    #undef far
-#endif
-
-#if defined(near)
-    #undef near
-#endif
-
 #include "garden_runtime.h"
 #include "garden_gameplay.h"
 
-
 struct Game_Context {
-    float player_x, player_y, player_w, player_h;
-    float player_speed;
+    F32 player_x, player_y, player_w, player_h;
+    F32 player_speed;
 
     Rect_F32 atlas_location;
 };
-
 
 //
 // Linear:
@@ -59,10 +35,12 @@ game_on_init(Platform_Context *platform)
     return game;
 }
 
+
 extern "C" __declspec(dllexport) void
-game_on_load(Platform_Context *platform, Game_Context *game)
+game_on_load([[maybe_unused]] Platform_Context *platform, Game_Context *game)
 {
-    (void)platform;
+    Linked_List<int> nums{};
+    nums.push_back(1);
 
     game->player_speed = 1000;
 }
@@ -84,10 +62,8 @@ game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
 }
 
 extern "C" __declspec(dllexport) void
-game_on_draw(Platform_Context *platform, Game_Context *game, float delta_time)
+game_on_draw(Platform_Context *platform, Game_Context *game, [[maybe_unused]] float delta_time)
 {
-    (void)delta_time;
-
     // XXX
     Color4 rect_color = { 255, 255, 255, 255  };
     Atlas atlas = { 32, 32 };
@@ -97,10 +73,8 @@ game_on_draw(Platform_Context *platform, Game_Context *game, float delta_time)
 }
 
 extern "C" __declspec(dllexport) void
-game_on_fini(Platform_Context *platform, Game_Context *game)
+game_on_fini([[maybe_unused]] Platform_Context *platform, [[maybe_unused]] Game_Context *game)
 {
-    (void)platform;
-    (void)game;
 }
 
 
