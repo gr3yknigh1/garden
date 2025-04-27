@@ -59,7 +59,7 @@ typedef unsigned int size32_t;
 
 wchar_t path16_get_separator(void);
 
-bool path16_get_parent(const wchar_t *path, Size path_length, Str16_View *out);
+bool path16_get_parent(const wchar_t *path, USize path_length, Str16_View *out);
 
 //
 // Perf helpers:
@@ -221,7 +221,7 @@ struct Vertex_Buffer_Layout {
 //
 bool make_vertex_buffer_layout(mm::Static_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity);
 
-Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, Size size);
+Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, USize size);
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_float  (Vertex_Buffer_Layout *layout, unsigned int count);
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_integer(Vertex_Buffer_Layout *layout, unsigned int count);
 
@@ -494,7 +494,7 @@ enum struct Asset_Location_Type {
 
 struct File_Info {
     FILE *handle;
-    Size size;
+    USize size;
     Str8 path;
 
     ~File_Info(void) noexcept {}
@@ -555,7 +555,7 @@ struct Shader {
     GLuint program_id;
     char *source_code;
 
-    Shader_Module modules[static_cast<Size>(Shader_Module_Type::Count_)];
+    Shader_Module modules[static_cast<USize>(Shader_Module_Type::Count_)];
 };
 
 struct Asset {
@@ -577,7 +577,7 @@ struct Asset {
 Asset *asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path);
 
 // helper
-bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, Size buffer_size, Tilemap *tilemap);
+bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, USize buffer_size, Tilemap *tilemap);
 bool asset_image_send_to_gpu(Asset_Store *store, Asset *asset, int unit, Shader *shader);
 
 bool shader_bind(Shader *shader);
@@ -591,7 +591,7 @@ struct Shader_Compile_Result {
     GLuint shader_program_id;
 };
 
-Shader_Compile_Result compile_shader(char *source_code, Size file_size);
+Shader_Compile_Result compile_shader(char *source_code, USize file_size);
 
 void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
 
@@ -995,7 +995,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
                 assert(texture_uniform_loc != -1);
                 glUniform1i(texture_uniform_loc, tilemap_asset->u.tilemap.texture_asset->u.texture.unit);
 
-                Size vertex_buffer_size = tilemap_vertexes_count * sizeof(*tilemap_vertexes);
+                USize vertex_buffer_size = tilemap_vertexes_count * sizeof(*tilemap_vertexes);
                 glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, tilemap_vertexes, GL_DYNAMIC_DRAW);
                 glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride)); // TODO(gr3yknigh1): Replace layout [2025/03/30]
             }
@@ -1009,7 +1009,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
                 assert(texture_uniform_loc != -1);
                 glUniform1i(texture_uniform_loc, atlas_asset->u.texture.unit);
 
-                Size vertex_buffer_size = platform_context.vertexes_count * sizeof(*platform_context.vertexes);
+                USize vertex_buffer_size = platform_context.vertexes_count * sizeof(*platform_context.vertexes);
                 glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, platform_context.vertexes, GL_DYNAMIC_DRAW);
                 glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
 
@@ -1230,7 +1230,7 @@ compile_shader_from_str8(const char *string, Shader_Module_Type type)
         glGetShaderiv(id, GL_INFO_LOG_LENGTH, &log_length);
         assert(log_length);
 
-        Size log_buffer_size = log_length + 1;
+        USize log_buffer_size = log_length + 1;
         char *log_buffer = static_cast<char *>(mm::allocate(log_buffer_size));
         assert(log_buffer);
 
@@ -1262,7 +1262,7 @@ link_shader_program(GLuint vertex_shader, GLuint fragment_shader)
         GLint log_length{0};
         glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
 
-        Size log_buffer_size = log_length + 1;
+        USize log_buffer_size = log_length + 1;
         char *log_buffer = static_cast<char *>(mm::allocate(log_buffer_size));
         assert(log_buffer);
 
@@ -1336,7 +1336,7 @@ vertex_buffer_layout_push_float(Vertex_Buffer_Layout *layout, unsigned int count
 void
 vertex_buffer_layout_build_attrs(const Vertex_Buffer_Layout *layout)
 {
-    Size offset = 0;
+    USize offset = 0;
 
     for (unsigned int attribute_index = 0; attribute_index < layout->attributes_count;
          ++attribute_index) {
@@ -1565,7 +1565,7 @@ gl_make_texture_from_pixels(void *pixels, size32_t width, size32_t height, Color
 }
 
 bool
-load_tilemap_from_buffer(Asset_Store *store, char *buffer, Size buffer_size, Tilemap *tilemap)
+load_tilemap_from_buffer(Asset_Store *store, char *buffer, USize buffer_size, Tilemap *tilemap)
 {
     Lexer lexer = make_lexer(buffer, buffer_size);
 
@@ -1627,7 +1627,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, Size buffer_size, Til
             int *indexes_cursor = tilemap->indexes;
 
             do {
-                Size current_index_index = indexes_cursor - tilemap->indexes;
+                USize current_index_index = indexes_cursor - tilemap->indexes;
                 assert(current_index_index + 1 <= tilemap->indexes_count);
 
                 assert(lexer_parse_int(&lexer, indexes_cursor));
@@ -1636,7 +1636,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, Size buffer_size, Til
                 ++indexes_cursor;
             } while(isdigit(lexer.lexeme));
 
-            Size filled_indexes = indexes_cursor - tilemap->indexes;
+            USize filled_indexes = indexes_cursor - tilemap->indexes;
             assert(filled_indexes == tilemap->indexes_count);
         }
 
@@ -1661,12 +1661,12 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, Size buffer_size, Til
 }
 
 bool
-path16_get_parent(const wchar_t *path, Size path_length, Str16_View *out)
+path16_get_parent(const wchar_t *path, USize path_length, Str16_View *out)
 {
 
     out->data = path;
 
-    for (Size index = path_length - 1; index > 0; --index) {
+    for (USize index = path_length - 1; index > 0; --index) {
         wchar_t c = path[index];
 
         if (c == path16_get_separator()) {
@@ -1701,8 +1701,8 @@ watch_thread_worker(PVOID param)
 
     // TODO(gr3yknigh1): Replace with String_Builder [2025/03/10]
     uint64_t target_dir_length = str16_get_length(context->target_dir);
-    Size target_dir_buffer_size = target_dir_length * sizeof(*context->target_dir);
-    Size file_full_path_buffer_capacity = (target_dir_length + MAX_PATH) * sizeof(*context->target_dir);
+    USize target_dir_buffer_size = target_dir_length * sizeof(*context->target_dir);
+    USize file_full_path_buffer_capacity = (target_dir_length + MAX_PATH) * sizeof(*context->target_dir);
 
     void *file_full_path_buffer = mm::allocate(file_full_path_buffer_capacity, ALLOCATE_ZERO_MEMORY);
     assert(file_full_path_buffer && "Buy more RAM");
@@ -1724,12 +1724,12 @@ watch_thread_worker(PVOID param)
 
             const wchar_t *changed_file_relative_path = current_notify_info->FileName;
             const uint64_t changed_file_relative_path_length = current_notify_info->FileNameLength / sizeof(*current_notify_info->FileName);
-            const Size changed_file_relative_path_buffer_size = current_notify_info->FileNameLength;
+            const USize changed_file_relative_path_buffer_size = current_notify_info->FileNameLength;
 
             if (context->notification_routine != nullptr) {
                 // TODO(gr3yknigh1): Replace with some kind of Path_Join function [2025/03/10]
                 static_cast<wchar_t *>(file_full_path_buffer)[target_dir_length] = path16_get_separator();
-                Size separator_size = sizeof(wchar_t);
+                USize separator_size = sizeof(wchar_t);
                 mm::copy_memory( mm::get_offset(file_full_path_buffer, target_dir_buffer_size + separator_size), static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
 
                 Str16_View file_name(static_cast<wchar_t *>(file_full_path_buffer), target_dir_length + 1 + changed_file_relative_path_length);
@@ -1917,7 +1917,7 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
         #endif
     } else if (asset->type == Asset_Type::Tilemap) {
 
-        Size buffer_size = asset->location.u.file.size + 1;
+        USize buffer_size = asset->location.u.file.size + 1;
         void* buffer = mm::allocate(buffer_size);
         mm::zero_memory(buffer, buffer_size);
 
@@ -1981,7 +1981,7 @@ asset_reload(Asset_Store *store, Asset *asset)
             asset->u.shader.program_id = compile_result.shader_program_id;
             assert(asset->u.shader.program_id);
         } else if (asset->type == Asset_Type::Tilemap) {
-            Size buffer_size = asset->location.u.file.size + 1;
+            USize buffer_size = asset->location.u.file.size + 1;
             void* buffer = mm::allocate(buffer_size);
             mm::zero_memory(buffer, buffer_size);
 
@@ -2149,7 +2149,7 @@ asset_watch_routine([[maybe_unused]] Watch_Context *watch_context, const Str16_V
 }
 
 Shader_Compile_Result
-compile_shader(char *source_code, Size file_size)
+compile_shader(char *source_code, USize file_size)
 {
     Lexer lexer = make_lexer(source_code, file_size);
 
@@ -2275,10 +2275,10 @@ bind_vertex_buffer(Vertex_Buffer *buffer)
 }
 
 
-Size
+USize
 mm::get_page_size(void)
 {
-    Size result;
+    USize result;
     SYSTEM_INFO system_info = {0};
     GetSystemInfo(&system_info);
     result = system_info.dwPageSize;

@@ -117,7 +117,7 @@ get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y)
 }
 
 mm::Static_Arena
-mm::make_static_arena(Size capacity)
+mm::make_static_arena(USize capacity)
 {
     Static_Arena arena;
 
@@ -129,7 +129,7 @@ mm::make_static_arena(Size capacity)
 }
 
 Lexer
-make_lexer(char *buffer, size_t buffer_size)
+make_lexer(Char8 *buffer, USize buffer_size)
 {
     Lexer lexer;
 
@@ -368,16 +368,16 @@ mm::arena_pop(mm::Arena *arena, void *data)
 }
 #endif
 
-Size
+USize
 mm::reset(mm::Static_Arena *arena)
 {
-    Size was_occupied = arena->occupied;
+    USize was_occupied = arena->occupied;
     arena->occupied = 0;
     return was_occupied;
 }
 
 void *
-mm::allocate(mm::Static_Arena *arena, Size size, mm::Allocate_Options options)
+mm::allocate(mm::Static_Arena *arena, USize size, mm::Allocate_Options options)
 {
     if (arena == nullptr) {
         return nullptr;
@@ -406,23 +406,23 @@ mm::destroy(mm::Static_Arena *arena)
 }
 
 void
-mm::zero_memory(void *p, Size size)
+mm::zero_memory(void *p, USize size)
 {
-    for (Size i = 0; i < size; ++i) {
+    for (USize i = 0; i < size; ++i) {
         static_cast<Byte *>(p)[i] = 0;
     }
 }
 
 void
-mm::copy_memory(void *dst, const void *src, Size size)
+mm::copy_memory(void *dst, const void *src, USize size)
 {
-    for (Size index = 0; index < size; ++index) {
+    for (USize index = 0; index < size; ++index) {
         static_cast<Byte *>(dst)[index] = static_cast<const Byte *>(src)[index];
     }
 }
 
 static inline void *
-allocate_impl(Size size, mm::Allocate_Options options)
+allocate_impl(USize size, mm::Allocate_Options options)
 {
     void *result = std::malloc(size);
     if (result && HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
@@ -443,7 +443,7 @@ mm::dump_allocation_records(bool do_hex_dump)
 {
     std::list<Allocation_Record> *records = mm::get_allocation_records();
 
-    Size total_memory = 0;
+    USize total_memory = 0;
 
     for (const mm::Allocation_Record &record : *records) {
         printf("Allocation_Record(options=(%d) size=(%lld) result=(%p) location.file_name=(%s) location.line=(%u) location.function_name=(%s))\n",
@@ -464,7 +464,7 @@ mm::dump_allocation_records(bool do_hex_dump)
 }
 
 void *
-mm::allocate(Size size, mm::Allocate_Options options)
+mm::allocate(USize size, mm::Allocate_Options options)
 {
     return allocate_impl(size, options);
 }
@@ -486,7 +486,7 @@ mm::make_block_allocator(void)
 }
 
 mm::Block_Allocator
-mm::make_block_allocator(U64 blocks_count, Size block_size, Size block_fixed_size, U64 block_count_limit)
+mm::make_block_allocator(U64 blocks_count, USize block_size, USize block_fixed_size, U64 block_count_limit)
 {
     assert(blocks_count && block_size);
 
@@ -560,7 +560,7 @@ mm::make_block_allocator(U64 blocks_count, Size block_size, Size block_fixed_siz
 
 
 void *
-mm::allocate(mm::Block_Allocator *allocator, Size size, mm::Allocate_Options options)
+mm::allocate(mm::Block_Allocator *allocator, USize size, mm::Allocate_Options options)
 {
     assert(allocator && size);
 
@@ -675,7 +675,7 @@ mm::destroy_block_allocator(mm::Block_Allocator *allocator)
 }
 
 bool
-mm::can_hold(mm::Stack_View *view, Size size)
+mm::can_hold(mm::Stack_View *view, USize size)
 {
     assert(view && size);
     bool result = (size + view->occupied) <= view->capacity;
@@ -683,7 +683,7 @@ mm::can_hold(mm::Stack_View *view, Size size)
 }
 
 void *
-mm::allocate(mm::Stack_View *view, Size size)
+mm::allocate(mm::Stack_View *view, USize size)
 {
     if (!mm::can_hold(view, size)) {
         return nullptr;
@@ -695,7 +695,7 @@ mm::allocate(mm::Stack_View *view, Size size)
 }
 
 mm::Stack_View
-mm::make_stack_view(void *data, Size capacity)
+mm::make_stack_view(void *data, USize capacity)
 {
     mm::Stack_View result;
     result.data = data;
@@ -706,7 +706,7 @@ mm::make_stack_view(void *data, Size capacity)
 }
 
 mm::Stack_View
-mm::make_stack_view(Size capacity)
+mm::make_stack_view(USize capacity)
 {
     mm::Stack_View result;
     result.data = allocate(capacity);
@@ -715,19 +715,19 @@ mm::make_stack_view(Size capacity)
     return result;
 }
 
-Size
-mm::align(Size size, Size alignment)
+USize
+mm::align(USize size, USize alignment)
 {
-    Size result =  size + (alignment - size % alignment);
+    USize result =  size + (alignment - size % alignment);
     return result;
 }
 
-Size
-mm::page_align(Size size)
+USize
+mm::page_align(USize size)
 {
-    Size page_size = mm::get_page_size();
+    USize page_size = mm::get_page_size();
 
-    Size result = mm::align(size, page_size);
+    USize result = mm::align(size, page_size);
     return result;
 }
 
@@ -782,13 +782,13 @@ mm::next(mm::Block_Allocator *allocator, void *data)
     return nullptr;
 }
 
-Size
+USize
 get_file_size(FILE *file)
 {
     assert(file);
 
     fseek(file, 0, SEEK_END);
-    Size file_size = ftell(file);
+    USize file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
     assert(file_size);
 
@@ -797,13 +797,13 @@ get_file_size(FILE *file)
 
 
 void
-mm::hex_dump(void *buffer, Size buffer_size)
+mm::hex_dump(void *buffer, USize buffer_size)
 {
 
-    for (Size i = 0; i < buffer_size; i += 16) {
+    for (USize i = 0; i < buffer_size; i += 16) {
         printf("%06llx: ", i);
 
-        for (Size j = 0; j < 16; j++) {
+        for (USize j = 0; j < 16; j++) {
             if (i + j < buffer_size) {
                 printf("%02x ", static_cast<Byte *>(buffer)[i + j]);
             } else {
@@ -812,7 +812,7 @@ mm::hex_dump(void *buffer, Size buffer_size)
         }
 
         printf(" ");
-        for (Size j = 0; j < 16; j++) {
+        for (USize j = 0; j < 16; j++) {
             if (i + j < buffer_size) {
                 printf("%c", isprint(static_cast<Byte *>(buffer)[i + j]) ? static_cast<Byte *>(buffer)[i + j] : '.');
             }

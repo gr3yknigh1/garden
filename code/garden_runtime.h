@@ -58,11 +58,6 @@
     #define EXPAND(X) X
 #endif
 
-// TODO(gr3yknigh1): Replace with zero_struct<Ty>(...);
-#if !defined(ZERO_STRUCT)
-    #define ZERO_STRUCT(STRUCT_PTR) memset((STRUCT_PTR), 0, sizeof(*(STRUCT_PTR)))
-#endif
-
 
 #if !defined(__cplusplus)
     // NOTE(gr3yknigh1): Require C11 [2025/04/07]
@@ -108,8 +103,11 @@
 
  */
 
-constexpr int pointer_size = 8;
-EXPECT_TYPE_SIZE(void *, pointer_size);
+#if !defined(POINTER_SIZE)
+    #define POINTER_SIZE 8
+#endif
+
+EXPECT_TYPE_SIZE(void *, POINTER_SIZE);
 
 typedef signed char S8;
 typedef signed short S16;
@@ -148,10 +146,12 @@ EXPECT_TYPE_SIZE(F32, 4);
 EXPECT_TYPE_SIZE(F64, 8);
 
 typedef U8  Byte;
-typedef U64 Size;
+typedef U64 USize;
+typedef S64 SSize;
 
 EXPECT_TYPE_SIZE(Byte, 1);
-EXPECT_TYPE_SIZE(Size, pointer_size);
+EXPECT_TYPE_SIZE(USize, POINTER_SIZE);
+EXPECT_TYPE_SIZE(SSize, POINTER_SIZE);
 
 typedef char     Char8;
 EXPECT_TYPE_SIZE(Char8, 1);
@@ -164,8 +164,8 @@ EXPECT_TYPE_SIZE(Char16, 2);
 typedef const Char8  *ZStr8;
 typedef const Char16 *ZStr16;
 
-EXPECT_TYPE_SIZE(ZStr8, pointer_size);
-EXPECT_TYPE_SIZE(ZStr16, pointer_size);
+EXPECT_TYPE_SIZE(ZStr8,  POINTER_SIZE);
+EXPECT_TYPE_SIZE(ZStr16, POINTER_SIZE);
 
 #if !defined(__cplusplus)
     // TODO(gr3yknigh1): Typedef to _Bool if C11
@@ -356,25 +356,25 @@ namespace mm {
 
 struct Buffer_View {
     Byte *data;
-    Size  size;
+    USize size;
 
     constexpr Buffer_View() noexcept : data(nullptr), size(0) {}
 };
 
-Size get_page_size(void);
+USize get_page_size(void);
 
-Size align(Size size, Size alignment);
-Size page_align(Size size);
+USize align(USize size, USize alignment);
+USize page_align(USize size);
 
-void zero_memory(void *p, Size size);
-void copy_memory(void *dst, const void *src, Size size);
+void zero_memory(void *p, USize size);
+void copy_memory(void *dst, const void *src, USize size);
 
 //!
 //! @brief Make offset by number of bytes specified.
 //!
 template<typename Ty = void>
 inline Ty *
-get_offset(Ty *pointer, Size offset)
+get_offset(Ty *pointer, USize offset)
 {
     return reinterpret_cast<Ty *>(reinterpret_cast<Byte *>(pointer) + offset);
 }
@@ -403,7 +403,7 @@ typedef U32 Allocate_Options;
 //!
 //! @brief Base version of `allocate` function. Calls to platform specific allocation function.
 //!
-void *allocate(Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
+void *allocate(USize size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
 template <typename Ty>
 inline Ty *
@@ -427,13 +427,13 @@ bool deallocate(void *p);
 //!
 struct Static_Arena {
     void *data;
-    Size capacity;
-    Size occupied;
+    USize capacity;
+    USize occupied;
 };
 
-Static_Arena make_static_arena(Size capacity);
+Static_Arena make_static_arena(USize capacity);
 bool         destroy(Static_Arena *arena);
-void *       allocate(Static_Arena *arena, Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
+void *       allocate(Static_Arena *arena, USize size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
 template <typename Ty>
 inline Ty *
@@ -454,29 +454,29 @@ allocate_struct(Static_Arena *arena, Allocate_Options options = ALLOCATE_NO_OPTS
 //!
 //! @returns Number of bytes which was occupied.
 //!
-Size reset(Static_Arena *arena);
+USize reset(Static_Arena *arena);
 
 struct Stack_View {
     void *data;
-    Size capacity;
-    Size occupied;
+    USize capacity;
+    USize occupied;
 };
 
-bool can_hold(Stack_View *view, Size size);
+bool can_hold(Stack_View *view, USize size);
 
 bool reset(Stack_View *view);
 
-void *allocate(Stack_View *view, Size size);
+void *allocate(Stack_View *view, USize size);
 
 //!
 //! @brief Initializes a view in stack-like data-block, and do not own it. Free it yourself!
 //!
-Stack_View make_stack_view(void *data, Size capacity);
+Stack_View make_stack_view(void *data, USize capacity);
 
 //!
 //! @brief Allocates new data-block and initializes a view in stack-like data-block, and do not own it. Free it yourself!
 //!
-Stack_View make_stack_view(Size capacity);
+Stack_View make_stack_view(USize capacity);
 
 struct Block {
     Block *next;
@@ -499,7 +499,7 @@ struct Block_Allocator {
     //! @brief If greater than zero, tells the allocator to allocate blocks with fixed size, which makes it basiclly
     //! behave like pool allocator. If equals zero, blocks will be allocated with specified size aligned to page size.
     //!
-    Size block_fixed_size;
+    USize block_fixed_size;
 
     //!
     //! @brief If greater than zero, sets limit on count of block, which can be allocated. If zero, there will be no
@@ -513,9 +513,9 @@ Block_Allocator make_block_allocator();
 //!
 //! @brief Pre-allocates specified amount of blocks with specified size.
 //!
-Block_Allocator make_block_allocator(U64 blocks_count, Size block_size, Size block_fixed_size = 0, U64 block_count_limit = 0);
+Block_Allocator make_block_allocator(U64 blocks_count, USize block_size, USize block_fixed_size = 0, U64 block_count_limit = 0);
 
-void *allocate(Block_Allocator *allocator, Size size, Allocate_Options options = ALLOCATE_NO_OPTS);
+void *allocate(Block_Allocator *allocator, USize size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
 template <typename Ty>
 inline Ty *
@@ -533,7 +533,7 @@ bool destroy_block_allocator(Block_Allocator *allocator);
 
 struct Allocation_Record {
     Allocate_Options options;
-    Size size;
+    USize size;
     void *result;
     Source_Location location;
 };
@@ -969,6 +969,8 @@ struct Linked_List {
 
         return true;
     }
+
+
 };
 
 //
@@ -980,7 +982,7 @@ int get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y);
 //
 // OS:
 //
-Size get_file_size(FILE *file);
+USize get_file_size(FILE *file);
 
 //
 // Gameplay:
@@ -1001,5 +1003,5 @@ struct Platform_Context {
     // NOTE(gr3yknigh1): Platform runtime will call issue a draw call if vertexes_count > 0 [2025/03/03]
     mm::Static_Arena vertexes_arena;
     Vertex *vertexes;
-    Size vertexes_count;
+    USize vertexes_count;
 };
