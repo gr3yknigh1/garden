@@ -41,6 +41,12 @@ game_on_load([[maybe_unused]] Platform_Context *platform, Game_Context *game)
 {
     Linked_List<int> nums{};
     nums.push_back(1);
+    nums.push_back(2);
+    nums.push_back(3);
+
+    for (Linked_List<int>::Forward_Iterator it = nums.begin(); it != nums.rend(); ++it) {
+        printf("%d ", *it);
+    }
 
     game->player_speed = 1000;
 }

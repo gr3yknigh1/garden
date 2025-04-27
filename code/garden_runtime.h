@@ -910,30 +910,121 @@ bool      lexer_is_end(Lexer *lexer);
 // Containers:
 //
 
-template<typename Value_Type>
-struct Linked_List_Node {
-    Linked_List_Node *next;
-    Linked_List_Node *previous;
-    Value_Type value;
-
-    constexpr
-    Linked_List_Node(const Value_Type &value_) noexcept
-        : next(nullptr), previous(nullptr), value(value_)
-    {
-    }
-
-    void
-    chain(Linked_List_Node<Value_Type> *next_node) noexcept
-    {
-        this->next = next_node;
-        next_node->previous = this;
-    }
-};
-
 template <typename Value_Type>
 struct Linked_List {
-    Linked_List_Node<Value_Type> *head;
-    Linked_List_Node<Value_Type> *tail;
+
+    struct Node {
+        Node *next;
+        Node *previous;
+
+        Value_Type value;
+
+        constexpr
+        Node(const Value_Type &value_) noexcept
+            : next(nullptr), previous(nullptr), value(value_)
+        {
+        }
+
+        void
+        chain(Node *next_node) noexcept
+        {
+            this->next = next_node;
+            next_node->previous = this;
+        }
+    };
+
+    struct Iterator {
+
+        constexpr
+        Iterator(Node *current_) noexcept
+            : current(current_)
+        {
+
+        }
+
+        Node *
+        get_node(void) noexcept
+        {
+            return this->current;
+        }
+
+        Value_Type &
+        operator*(void) const noexcept
+        {
+            return this->current->value;
+        }
+
+        Value_Type *
+        operator->() noexcept
+        {
+            return &this->current->value;
+        }
+
+        virtual Iterator & operator++(void) noexcept = 0;
+
+        Iterator
+        operator++(int) noexcept
+        {
+            Iterator t = *this;
+            ++(*this);
+            return t;
+        }
+
+        friend bool
+        operator== (const Iterator& a, const Iterator& b) noexcept
+        {
+            return a.current == b.current;
+        };
+
+        friend bool
+        operator!= (const Iterator& a, const Iterator& b) noexcept
+        {
+            return a.current != b.current;
+        };
+
+        Node *current;
+    };
+
+    struct Forward_Iterator : public Iterator {
+
+        constexpr
+        Forward_Iterator(Node *current_) noexcept
+            : Iterator(current_)
+        {
+        }
+
+        Iterator &
+        operator++(void) noexcept override
+        {
+            if (this->current != nullptr) {
+                this->current = this->current->next;
+            }
+            return *this;
+        }
+
+    };
+
+    struct Backward_Iterator : public Iterator {
+
+        constexpr
+        Backward_Iterator(Node *current_) noexcept
+            : Iterator(current_)
+        {
+        }
+
+        Iterator &
+        operator++(void) noexcept override
+        {
+            if (this->current != nullptr) {
+                this->current = this->current->previous;
+            }
+            return *this;
+        }
+
+    };
+
+    Node *head;
+    Node *tail;
 
     U64 count;
 
@@ -943,13 +1034,25 @@ struct Linked_List {
     {
     }
 
+    ~Linked_List(void) noexcept
+    {
+        for (Forward_Iterator it = this->begin(); it != this->end(); ++it) {
+            Node *current = it.get_node();
+            if (current->previous) {
+                mm::deallocate(current->previous);
+            }
+        }
+        mm::deallocate(this->tail);
+        mm::zero_memory(this, sizeof(*this));
+    }
+
     Linked_List(const Linked_List &) = delete;
     Linked_List(Linked_List &&) = delete;
 
     bool
     push_back(const Value_Type &new_element) noexcept
     {
-        Linked_List_Node<Value_Type> *new_node = mm::allocate_struct<Linked_List_Node<Value_Type>>(ALLOCATE_ZERO_MEMORY);
+        Node *new_node = mm::allocate_struct<Node>(ALLOCATE_ZERO_MEMORY);
 
         if (!new_node) {
             return false;
@@ -970,7 +1073,29 @@ struct Linked_List {
         return true;
     }
 
+    constexpr Forward_Iterator
+    begin(void) noexcept
+    {
+        return Forward_Iterator(this->head);
+    }
 
+    constexpr Forward_Iterator
+    end(void) noexcept
+    {
+        return Forward_Iterator(nullptr);
+    }
+
+    constexpr Backward_Iterator
+    rbegin(void) noexcept
+    {
+        return Backward_Iterator(this->head);
+    }
+
+    constexpr Backward_Iterator
+    rend(void) noexcept
+    {
+        return Backward_Iterator(nullptr);
+    }
 };
 
 //
