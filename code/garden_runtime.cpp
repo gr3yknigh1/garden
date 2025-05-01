@@ -116,10 +116,10 @@ get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y)
     return width * y + x;
 }
 
-mm::Static_Arena
+mm::Fixed_Arena
 mm::make_static_arena(USize capacity)
 {
-    Static_Arena arena;
+    Fixed_Arena arena;
 
     arena.data     = allocate(capacity);
     arena.capacity = capacity;
@@ -369,7 +369,7 @@ mm::arena_pop(mm::Arena *arena, void *data)
 #endif
 
 USize
-mm::reset(mm::Static_Arena *arena)
+mm::reset(mm::Fixed_Arena *arena)
 {
     USize was_occupied = arena->occupied;
     arena->occupied = 0;
@@ -377,7 +377,7 @@ mm::reset(mm::Static_Arena *arena)
 }
 
 void *
-mm::allocate(mm::Static_Arena *arena, USize size, mm::Allocate_Options options)
+mm::allocate(mm::Fixed_Arena *arena, USize size, mm::Allocate_Options options)
 {
     if (arena == nullptr) {
         return nullptr;
@@ -398,10 +398,10 @@ mm::allocate(mm::Static_Arena *arena, USize size, mm::Allocate_Options options)
 }
 
 bool
-mm::destroy(mm::Static_Arena *arena)
+mm::destroy(mm::Fixed_Arena *arena)
 {
     bool result = mm::deallocate(arena->data);
-    mm::zero_struct<mm::Static_Arena>(arena);
+    mm::zero_struct<mm::Fixed_Arena>(arena);
     return result;
 }
 
@@ -799,7 +799,6 @@ get_file_size(FILE *file)
 void
 mm::hex_dump(void *buffer, USize buffer_size)
 {
-
     for (USize i = 0; i < buffer_size; i += 16) {
         printf("%06llx: ", i);
 

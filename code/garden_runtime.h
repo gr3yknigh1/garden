@@ -425,28 +425,28 @@ bool deallocate(void *p);
 //!
 //! @brief Memory block, which has static capacity, no ability to deallocate each individual allocations and can only be free whole block.
 //!
-struct Static_Arena {
+struct Fixed_Arena {
     void *data;
     USize capacity;
     USize occupied;
 };
 
-Static_Arena make_static_arena(USize capacity);
-bool         destroy(Static_Arena *arena);
-void *       allocate(Static_Arena *arena, USize size, Allocate_Options options = ALLOCATE_NO_OPTS);
+Fixed_Arena  make_static_arena(USize capacity);
+bool         destroy(Fixed_Arena *arena);
+void *       allocate(Fixed_Arena *arena, USize size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
 template <typename Ty>
 inline Ty *
-allocate_structs(Static_Arena *arena, U64 count, Allocate_Options options = ALLOCATE_NO_OPTS)
+allocate_structs(Fixed_Arena *arena, U64 count, Allocate_Options options = ALLOCATE_NO_OPTS)
 {
     return static_cast<Ty *>(allocate(arena, sizeof(Ty) * count, options));
 }
 
 template <typename Ty>
 inline Ty *
-allocate_struct(Static_Arena *arena, Allocate_Options options = ALLOCATE_NO_OPTS)
+allocate_struct(Fixed_Arena *arena, Allocate_Options options = ALLOCATE_NO_OPTS)
 {
-    return allocate_structs<Ty>(arena, 1, options);
+    return static_cast<Ty *>(allocate(arena, sizeof(Ty), options));
 }
 
 //!
@@ -454,7 +454,7 @@ allocate_struct(Static_Arena *arena, Allocate_Options options = ALLOCATE_NO_OPTS
 //!
 //! @returns Number of bytes which was occupied.
 //!
-USize reset(Static_Arena *arena);
+USize reset(Fixed_Arena *arena);
 
 struct Stack_View {
     void *data;
@@ -560,6 +560,41 @@ bool dump_allocation_records(bool do_hex_dump = false);
 //! @todo(gr3yknigh1): Add option to dump it all to other place (file for example) [2025/04/25]
 //!
 void hex_dump(void *buffer, U64 buffer_length);
+
+struct Basic_Allocator {};
+
+template<typename Allocator_Type>
+constexpr bool
+external_lifetime()
+{
+    return true;
+}
+
+template<>
+constexpr bool
+external_lifetime<Basic_Allocator>()
+{
+    return false;
+}
+
+inline void *
+allocate([[maybe_unused]] Basic_Allocator *allocator, USize size, Allocate_Options options = ALLOCATE_NO_OPTS) noexcept
+{
+    return allocate(size, options);
+}
+
+inline bool
+deallocate([[maybe_unused]] Basic_Allocator *allocator, void *data) noexcept
+{
+    return deallocate(data);
+}
+
+template <typename Ty>
+inline Ty *
+allocate_struct([[maybe_unused]] Basic_Allocator *allocator, Allocate_Options options = ALLOCATE_NO_OPTS)
+{
+    return static_cast<Ty *>(allocate(allocator, sizeof(Ty), options));
+}
 
 } // namespace mm
 
@@ -910,7 +945,7 @@ bool      lexer_is_end(Lexer *lexer);
 // Containers:
 //
 
-template <typename Value_Type>
+template <typename Value_Type, typename Allocator_Type = mm::Basic_Allocator>
 struct Linked_List {
 
     struct Node {
@@ -939,7 +974,6 @@ struct Linked_List {
         Iterator(Node *current_) noexcept
             : current(current_)
         {
-
         }
 
         Node *
@@ -1028,22 +1062,32 @@ struct Linked_List {
 
     U64 count;
 
+    Allocator_Type *allocator;
+
     constexpr
     Linked_List(void) noexcept
-        : head(nullptr), tail(nullptr), count(0)
+        : head(nullptr), tail(nullptr), count(0), allocator(nullptr)
+    {
+    }
+
+    constexpr
+    Linked_List(Allocator_Type *allocator) noexcept
+        : head(nullptr), tail(nullptr), count(0), allocator(allocator)
     {
     }
 
     ~Linked_List(void) noexcept
     {
-        for (Forward_Iterator it = this->begin(); it != this->end(); ++it) {
-            Node *current = it.get_node();
-            if (current->previous) {
-                mm::deallocate(current->previous);
+        if constexpr (!mm::external_lifetime<Allocator_Type>()) {
+            for (Forward_Iterator it = this->begin(); it != this->end(); ++it) {
+                Node *current = it.get_node();
+                if (current->previous) {
+                    mm::deallocate(this->allocator, current->previous);
+                }
             }
+            mm::deallocate(this->allocator, this->tail);
+            mm::zero_memory(this, sizeof(*this));
         }
-        mm::deallocate(this->tail);
-        mm::zero_memory(this, sizeof(*this));
     }
 
     Linked_List(const Linked_List &) = delete;
@@ -1052,7 +1096,7 @@ struct Linked_List {
     bool
     push_back(const Value_Type &new_element) noexcept
     {
-        Node *new_node = mm::allocate_struct<Node>(ALLOCATE_ZERO_MEMORY);
+        Node *new_node = mm::allocate_struct<Node>(this->allocator, ALLOCATE_ZERO_MEMORY);
 
         if (!new_node) {
             return false;
@@ -1088,7 +1132,7 @@ struct Linked_List {
     constexpr Backward_Iterator
     rbegin(void) noexcept
     {
-        return Backward_Iterator(this->head);
+        return Backward_Iterator(this->tail);
     }
 
     constexpr Backward_Iterator
@@ -1123,10 +1167,10 @@ struct Platform_Context {
     Input_State input_state;
     Camera *camera;
 
-    mm::Static_Arena persist_arena;
+    mm::Fixed_Arena persist_arena;
 
     // NOTE(gr3yknigh1): Platform runtime will call issue a draw call if vertexes_count > 0 [2025/03/03]
-    mm::Static_Arena vertexes_arena;
+    mm::Fixed_Arena vertexes_arena;
     Vertex *vertexes;
     USize vertexes_count;
 };

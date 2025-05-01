@@ -23,7 +23,7 @@ void normalize_vector2f(float *x, float *y);
 extern "C" __declspec(dllexport) void *
 game_on_init(Platform_Context *platform)
 {
-    Game_Context *game = static_cast<Game_Context *>(allocate(&platform->persist_arena, sizeof(game), 0));
+    Game_Context *game = mm::allocate_struct<Game_Context>(&platform->persist_arena, ALLOCATE_NO_OPTS);
 
     game->player_x = 20;
     game->player_y = 20;
@@ -39,12 +39,12 @@ game_on_init(Platform_Context *platform)
 extern "C" __declspec(dllexport) void
 game_on_load([[maybe_unused]] Platform_Context *platform, Game_Context *game)
 {
-    Linked_List<int> nums{};
+    Linked_List<int, mm::Fixed_Arena> nums{&platform->persist_arena};
     nums.push_back(1);
     nums.push_back(2);
     nums.push_back(3);
 
-    for (Linked_List<int>::Forward_Iterator it = nums.begin(); it != nums.rend(); ++it) {
+    for (auto it = nums.rbegin(); it != nums.rend(); ++it) {
         printf("%d ", *it);
     }
 
@@ -74,7 +74,7 @@ game_on_draw(Platform_Context *platform, Game_Context *game, [[maybe_unused]] fl
     Color4 rect_color = { 255, 255, 255, 255  };
     Atlas atlas = { 32, 32 };
 
-    platform->vertexes = allocate_structs<Vertex>(&platform->vertexes_arena, 6);
+    platform->vertexes = mm::allocate_structs<Vertex>(&platform->vertexes_arena, 6);
     platform->vertexes_count = generate_rect_with_atlas(platform->vertexes, game->player_x, game->player_y, game->player_w, game->player_h, game->atlas_location, &atlas, rect_color);
 }
 

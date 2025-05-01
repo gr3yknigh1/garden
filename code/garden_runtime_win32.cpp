@@ -219,7 +219,7 @@ struct Vertex_Buffer_Layout {
 //
 // @return True if allocation of the array was succesfull. Otherwise buy more RAM.
 //
-bool make_vertex_buffer_layout(mm::Static_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity);
+bool make_vertex_buffer_layout(mm::Fixed_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity);
 
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, USize size);
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_float  (Vertex_Buffer_Layout *layout, unsigned int count);
@@ -708,7 +708,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     assert(make_vertex_buffer(&entity_vertex_buffer));
     assert(bind_vertex_buffer(&entity_vertex_buffer));
 
-    mm::Static_Arena page_arena = mm::make_static_arena(1024);
+    mm::Fixed_Arena page_arena = mm::make_static_arena(1024);
 
     Vertex_Buffer_Layout vertex_buffer_layout;
     assert(make_vertex_buffer_layout(&page_arena, &vertex_buffer_layout, 4));
@@ -1037,9 +1037,9 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
 
     glDeleteProgram(basic_shader->program_id); // @cleanup Replace with asset_shader_free
 
-    destroy(&page_arena);
-    destroy(&platform_context.vertexes_arena);
-    destroy(&platform_context.persist_arena);
+    mm::destroy(&page_arena);
+    mm::destroy(&platform_context.vertexes_arena);
+    mm::destroy(&platform_context.persist_arena);
 
     assert(FreeLibrary(opengl_module));
     CloseWindow(window); // TODO(gr3yknigh1): why it fails? [2025/02/23]
@@ -1278,7 +1278,7 @@ link_shader_program(GLuint vertex_shader, GLuint fragment_shader)
 
 
 bool
-make_vertex_buffer_layout(mm::Static_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity)
+make_vertex_buffer_layout(mm::Fixed_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity)
 {
     ZERO_STRUCT(layout);
 
