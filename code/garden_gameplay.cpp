@@ -67,6 +67,19 @@ game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
     platform->camera->position.y = -game->player_y - game->player_h / 2;
 }
 
+
+
+static void
+HelpMarker(const char *desc) {
+    ImGui::TextDisabled("(?)");
+    if (ImGui::BeginItemTooltip()) {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+        ImGui::TextUnformatted(desc);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
 extern "C" __declspec(dllexport) void
 game_on_draw(Platform_Context *platform, Game_Context *game, [[maybe_unused]] float delta_time)
 {
@@ -76,6 +89,30 @@ game_on_draw(Platform_Context *platform, Game_Context *game, [[maybe_unused]] fl
 
     platform->vertexes = mm::allocate_structs<Vertex>(&platform->vertexes_arena, 6);
     platform->vertexes_count = generate_rect_with_atlas(platform->vertexes, game->player_x, game->player_y, game->player_w, game->player_h, game->atlas_location, &atlas, rect_color);
+
+
+    #if 0
+    static bool show_debug_panel = true;
+    ImGui::Begin("Debug panel", &show_debug_panel, 0);
+
+    if (ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+            ImGui::EndMenu();
+        }
+
+        HelpMarker("Hi!"
+                   "\n"
+                   "Dev version.");
+
+        ImGui::EndMenuBar();
+    }
+
+    if (ImGui::CollapsingHeader("Debug Info")) {
+    }
+
+    ImGui::End();
+
+    #endif
 }
 
 extern "C" __declspec(dllexport) void

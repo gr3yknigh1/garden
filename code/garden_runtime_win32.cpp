@@ -42,6 +42,11 @@
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
+#include "imgui.h"
+#include "imgui_impl_opengl3.h"
+#include "imgui_impl_win32.h"
+#include "imgui_stdlib.h" // ImGui::InputText with std::string instead of char*
+
 #include "media/aseprite.h"
 
 #include "garden_gameplay.h"
@@ -692,6 +697,24 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     int window_height = window_rect.bottom - window_rect.top;
 
     //
+    // ImGui:
+    //
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+
+    ImGui::StyleColorsDark();
+
+    [[maybe_unused]] ImGuiStyle &style = ImGui::GetStyle();
+
+    ImGui_ImplWin32_InitForOpenGL(window);
+    ImGui_ImplOpenGL3_Init();
+
+
+    //
     // OpenGL settings:
     //
     glEnable(GL_BLEND);
@@ -907,6 +930,10 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
             break;
         }
 
+        if (IsIconic(window)) {
+            Sleep(10);
+            continue;
+        }
 
         //
         // Update:
@@ -1017,6 +1044,19 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
                 reset(&platform_context.vertexes_arena);
             }
 
+            //
+            // ImGui new frame:
+            //
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplWin32_NewFrame();
+            ImGui::NewFrame();
+
+            static bool show_demo_window = true;
+            ImGui::ShowDemoWindow(&show_demo_window);
+
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
             assert(SwapBuffers(window_device_context));
 
         PERF_BLOCK_END(DRAW);
@@ -1028,6 +1068,13 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     gameplay.on_fini(&platform_context, game_context);
 
     unload_gameplay(&gameplay);
+
+    //
+    // ImGui shutdown:
+    //
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
 
     //
     // TODO(gr3yknigh1): Make ReadDirectoryChangesW asyncronous, so you
@@ -1052,9 +1099,16 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     return 0;
 }
 
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
+
 LRESULT CALLBACK
 win32_window_message_handler(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
+    if (ImGui_ImplWin32_WndProcHandler(window, message, wparam, lparam)) {
+        return true;
+    }
+
     switch (message) {
 
     case WM_CREATE:

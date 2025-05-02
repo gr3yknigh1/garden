@@ -118,11 +118,21 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
         code_dir,
         glm_folder,
         c.join(project_dir, "glad"),
+        c.join(project_dir, "imgui"),
+        c.join(project_dir, "imgui", "backends"),
+        c.join(project_dir, "imgui", "misc", "cpp"),
     ]
     sources = [
         c.join(code_dir, "garden_runtime.cpp"),
         c.join(project_dir, "glad", "glad.c"),
         c.join(project_dir, "glad", "glad_wgl.c"),
+        c.join(project_dir, "imgui", "imgui.cpp"),
+        c.join(project_dir, "imgui", "imgui_demo.cpp"),
+        c.join(project_dir, "imgui", "imgui_draw.cpp"),
+        c.join(project_dir, "imgui", "imgui_widgets.cpp"),
+        c.join(project_dir, "imgui", "imgui_tables.cpp"),
+        c.join(project_dir, "imgui", "backends", "imgui_impl_win32.cpp"),
+        c.join(project_dir, "imgui", "backends", "imgui_impl_opengl3.cpp"),
     ]
 
     if perf:
