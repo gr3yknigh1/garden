@@ -620,10 +620,10 @@ DllMain([[maybe_unused]] HINSTANCE instance, DWORD reason, [[maybe_unused]] LPVO
 
 #else
 
-#if !defined(GARDEN_ASSET_FOLDER)
+#if !defined(GARDEN_ASSETS_FOLDER)
     #error "Dev asset directory is not defined!"
 #else
-    #pragma message( "Using DEV asset dir: '" STRINGIFY(GARDEN_ASSET_FOLDER) "'" )
+    #pragma message( "Using DEV asset dir: '" STRINGIFY(GARDEN_ASSETS_FOLDER) "'" )
 #endif
 
 int WINAPI
@@ -748,7 +748,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     // Media:
     //
     Asset_Store store;
-    assert(make_asset_store_from_folder(&store, STRINGIFY(GARDEN_ASSET_FOLDER)));
+    assert(make_asset_store_from_folder(&store, STRINGIFY(GARDEN_ASSETS_FOLDER)));
 
     Asset *basic_shader_asset = asset_load(&store, Asset_Type::Shader, R"(P:\garden\assets\basic.sl)");
     assert(basic_shader_asset);
