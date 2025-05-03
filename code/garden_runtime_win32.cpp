@@ -13,6 +13,7 @@
 
 #include <assert.h> // assert
 #include <stdio.h>  // puts, printf, FILE, fopen, freopen, fseek, fclose
+#include <stdarg.h>
 
 #if !defined(UNICODE)
     #define UNICODE
@@ -1122,10 +1123,27 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
 }
 
 
+static void
+gui_show_helper_marker(ZStr8 description, ...)
+{
+    va_list args;
+    va_start(args, description);
+
+    ImGui::TextDisabled("(?)");
+    if (ImGui::BeginItemTooltip()) {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+        ImGui::TextV(description, args);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+
+    va_end(args);
+}
+
+
 void
 gui_show_debug_console(Console *console, bool *p_open)
 {
-
     if (!ImGui::Begin("Debug Console", p_open)) {
         ImGui::End();
         return;
@@ -1143,7 +1161,14 @@ gui_show_debug_console(Console *console, bool *p_open)
     }
 
     ImGui::SameLine();
+
     bool copy_to_clipboard = ImGui::SmallButton("Copy");
+
+    ImGui::SameLine();
+
+    if (ImGui::SmallButton("Test Message")) {
+        console->reporter->report(Severenity::Trace, "Test message");
+    }
 
     ImGui::Separator();
 
@@ -1160,18 +1185,32 @@ gui_show_debug_console(Console *console, bool *p_open)
     // Reserve enough left-over height for 1 separator + 1 input text
     const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
     if (ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_HorizontalScrollbar)) {
+
         if (ImGui::BeginPopupContextWindow()) {
             if (ImGui::Selectable("Clear")) console->reporter->reports.clear();
             ImGui::EndPopup();
         }
 
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1)); // Tighten spacing
+
         if (copy_to_clipboard) {
             ImGui::LogToClipboard();
         }
 
         for (const Report &report : console->reporter->reports) {
-            ImGui::Text("%c: %s", SEVERENITY_LETTERS[static_cast<USize>(report.severenity)], report.message);
+
+            if (report.count > 1) {
+                ImGui::Text("%c: %s x%lu", SEVERENITY_LETTERS[static_cast<USize>(report.severenity)], report.message.data, report.count);
+            } else {
+                ImGui::Text("%c: %s", SEVERENITY_LETTERS[static_cast<USize>(report.severenity)], report.message.data);
+            }
+
+            ImGui::SameLine();
+
+            const Source_Location *location = &report.source_location;
+            ImGui::Text/*gui_show_helper_marker*/(
+                "%s(%u:%u)@(%s)",
+                location->file_name, location->line, location->column, location->function_name);
         }
 
         if (copy_to_clipboard) {

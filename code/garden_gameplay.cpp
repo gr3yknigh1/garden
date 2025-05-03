@@ -39,7 +39,7 @@ game_on_init(Platform_Context *platform)
 extern "C" __declspec(dllexport) void
 game_on_load([[maybe_unused]] Platform_Context *platform, Game_Context *game)
 {
-    game->player_speed = 1000;
+    game->player_speed = 100;
 }
 
 extern "C" __declspec(dllexport) void
@@ -58,18 +58,6 @@ game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
     platform->camera->position.y = -game->player_y - game->player_h / 2;
 }
 
-
-
-static void
-HelpMarker(const char *desc) {
-    ImGui::TextDisabled("(?)");
-    if (ImGui::BeginItemTooltip()) {
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-        ImGui::TextUnformatted(desc);
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
-    }
-}
 
 extern "C" __declspec(dllexport) void
 game_on_draw(Platform_Context *platform, Game_Context *game, [[maybe_unused]] float delta_time)

@@ -626,7 +626,7 @@ allocate_struct([[maybe_unused]] Basic_Allocator *allocator, Allocate_Options op
 constexpr bool
 zstr8_is_equals(ZStr8 a, ZStr8 b) noexcept
 {
-    while (a != nullptr && b != nullptr) {
+    while (a != nullptr && *a != 0 && b != nullptr && *b != 0) {
         if (*a != *b) {
             return false;
         }
@@ -635,7 +635,7 @@ zstr8_is_equals(ZStr8 a, ZStr8 b) noexcept
         ++b;
     }
 
-    if ((a == nullptr && b != nullptr) || (a != nullptr && b != nullptr)) {
+    if ((*a == 0 && *b != 0) || (*a != 0 && *b != 0)) {
         return false;
     }
 
