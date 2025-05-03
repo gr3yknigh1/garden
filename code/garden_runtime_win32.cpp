@@ -626,6 +626,18 @@ DllMain([[maybe_unused]] HINSTANCE instance, DWORD reason, [[maybe_unused]] LPVO
     #pragma message( "Using DEV asset dir: '" STRINGIFY(GARDEN_ASSETS_FOLDER) "'" )
 #endif
 
+
+struct Console {
+    Reporter *reporter;
+
+    bool auto_scroll;
+    bool scroll_to_bottom;
+};
+
+
+void gui_show_debug_console(Console *console, bool *p_open);
+
+
 int WINAPI
 wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[maybe_unused]] PWSTR command_line, int cmd_show)
 {
@@ -851,6 +863,13 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     Game_Context *game_context = reinterpret_cast<Game_Context *>(gameplay.on_init(&platform_context));
     gameplay.on_load(&platform_context, game_context);
 
+    bool show_debug_console = true;
+
+    Reporter frame_reporter{};
+
+    Console console{};
+    console.reporter = &frame_reporter;
+
     while (!global_should_terminate) {
         double dt = clock_tick(&clock);
 
@@ -862,7 +881,8 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
         //
 
         if (reload_context.should_reload_gameplay.test()) {
-            puts("I: Gameplay code reload!");
+            //puts("I: Gameplay code reload!");
+            frame_reporter.report(Severenity::Info, "Gameplay code was reloaded!");
 
             reload_context.should_reload_gameplay.clear();
             unload_gameplay(&gameplay);
@@ -1054,6 +1074,8 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
             static bool show_demo_window = true;
             ImGui::ShowDemoWindow(&show_demo_window);
 
+            gui_show_debug_console(&console, &show_debug_console);
+
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -1097,6 +1119,77 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     mm::dump_allocation_records();
 
     return 0;
+}
+
+
+void
+gui_show_debug_console(Console *console, bool *p_open)
+{
+
+    if (!ImGui::Begin("Debug Console", p_open)) {
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::BeginPopupContextItem()) {
+        if (ImGui::MenuItem("Close Console")) {
+            *p_open = false;
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::SmallButton("Clear")) {
+        console->reporter->reports.clear();
+    }
+
+    ImGui::SameLine();
+    bool copy_to_clipboard = ImGui::SmallButton("Copy");
+
+    ImGui::Separator();
+
+    if (ImGui::BeginPopup("Options")) {
+        ImGui::Checkbox("Auto-scroll", &console->auto_scroll);
+        ImGui::EndPopup();
+    }
+
+    ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_Tooltip);
+    if (ImGui::Button("Options")) {
+        ImGui::OpenPopup("Options");
+    }
+
+    // Reserve enough left-over height for 1 separator + 1 input text
+    const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
+    if (ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_HorizontalScrollbar)) {
+        if (ImGui::BeginPopupContextWindow()) {
+            if (ImGui::Selectable("Clear")) console->reporter->reports.clear();
+            ImGui::EndPopup();
+        }
+
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1)); // Tighten spacing
+        if (copy_to_clipboard) {
+            ImGui::LogToClipboard();
+        }
+
+        for (const Report &report : console->reporter->reports) {
+            ImGui::Text("%c: %s", SEVERENITY_LETTERS[static_cast<USize>(report.severenity)], report.message);
+        }
+
+        if (copy_to_clipboard) {
+            ImGui::LogFinish();
+        }
+
+        if (console->scroll_to_bottom || (console->auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())) {
+            ImGui::SetScrollHereY(1.0f);
+        }
+
+        console->scroll_to_bottom = false;
+
+        ImGui::PopStyleVar();
+    }
+    ImGui::EndChild();
+    ImGui::Separator();
+
+    ImGui::End();
 }
 
 // Forward declare message handler from imgui_impl_win32.cpp

@@ -39,15 +39,6 @@ game_on_init(Platform_Context *platform)
 extern "C" __declspec(dllexport) void
 game_on_load([[maybe_unused]] Platform_Context *platform, Game_Context *game)
 {
-    Linked_List<int, mm::Fixed_Arena> nums{&platform->persist_arena};
-    nums.push_back(1);
-    nums.push_back(2);
-    nums.push_back(3);
-
-    for (auto it = nums.rbegin(); it != nums.rend(); ++it) {
-        printf("%d ", *it);
-    }
-
     game->player_speed = 1000;
 }
 

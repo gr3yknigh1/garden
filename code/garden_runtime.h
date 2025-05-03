@@ -237,13 +237,32 @@ struct Source_Location {
     U32 line;
 
     //!
+    //! @brief Number of the column.
+    //!
+    U32 column;
+
+    //!
     //! @brief Decorated function name (__FUNCDNAME__).
     //!
     ZStr8 function_name;
 
 
-    constexpr Source_Location(std::source_location location) noexcept : file_name(location.file_name()), line(location.line()), function_name(location.function_name()) {}
+    constexpr Source_Location(std::source_location location) noexcept : file_name(location.file_name()), line(location.line()), column(location.column()), function_name(location.function_name()) {}
 };
+
+
+constexpr bool zstr8_is_equals(ZStr8 a, ZStr8 b) noexcept; // XXX
+
+constexpr bool
+source_location_is_equals(const Source_Location *a, const Source_Location *b) noexcept
+{
+    return (
+        a->line == b->line
+        && a->column && b->column
+        && zstr8_is_equals(a->function_name, b->function_name)
+        && zstr8_is_equals(a->file_name, b->file_name)
+    );
+}
 
 //
 // Graphics (gfx):
@@ -604,6 +623,26 @@ allocate_struct([[maybe_unused]] Basic_Allocator *allocator, Allocate_Options op
 // Strings:
 //
 
+constexpr bool
+zstr8_is_equals(ZStr8 a, ZStr8 b) noexcept
+{
+    while (a != nullptr && b != nullptr) {
+        if (*a != *b) {
+            return false;
+        }
+
+        ++a;
+        ++b;
+    }
+
+    if ((a == nullptr && b != nullptr) || (a != nullptr && b != nullptr)) {
+        return false;
+    }
+
+    return true;
+}
+
+// TODO(gr3yknigh1): Rename str8_get_lentgh -> zstr8_get_length
 constexpr size_t
 str8_get_length(const char *s) noexcept
 {
@@ -706,6 +745,22 @@ public:
     }
 };
 
+bool
+str8_is_equals(const Str8 *a, const Str8 *b) noexcept
+{
+    if (a->length != b->length) {
+        return false;
+    }
+
+    // TODO(gr3yknigh1): Do vectorization [2025/01/03]
+    for (U64 i = 0; i < a->length; ++i) {
+        if (a->data[i] != b->data[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 struct Str8_View {
     const char *data;
@@ -1079,14 +1134,7 @@ struct Linked_List {
     ~Linked_List(void) noexcept
     {
         if constexpr (!mm::external_lifetime<Allocator_Type>()) {
-            for (Forward_Iterator it = this->begin(); it != this->end(); ++it) {
-                Node *current = it.get_node();
-                if (current->previous) {
-                    mm::deallocate(this->allocator, current->previous);
-                }
-            }
-            mm::deallocate(this->allocator, this->tail);
-            mm::zero_memory(this, sizeof(*this));
+            this->clear();
         }
     }
 
@@ -1117,6 +1165,32 @@ struct Linked_List {
         return true;
     }
 
+    Value_Type &
+    last(void) noexcept
+    {
+        return this->rbegin().current->value;
+    }
+
+    const Value_Type &
+    last(void) const noexcept
+    {
+        return this->rbegin().current->value;
+    }
+
+    bool
+    clear(void) noexcept
+    {
+        for (Forward_Iterator it = this->begin(); it != this->end(); ++it) {
+            Node *current = it.get_node();
+            if (current->previous) {
+                mm::deallocate(this->allocator, current->previous);
+            }
+        }
+        mm::deallocate(this->allocator, this->tail);
+        mm::zero_memory(this, sizeof(*this));
+        return true;
+    }
+
     constexpr Forward_Iterator
     begin(void) noexcept
     {
@@ -1139,6 +1213,51 @@ struct Linked_List {
     rend(void) noexcept
     {
         return Backward_Iterator(nullptr);
+    }
+};
+
+//
+// Error reporting:
+//
+
+enum class Severenity {
+    None,
+    Trace,
+    Debug,
+    Info,
+    Warning,
+    Error,
+    Fatal,
+    _Count,
+};
+
+Char8 SEVERENITY_LETTERS[static_cast<USize>(Severenity::_Count)] {
+    '?', 'T', 'D', 'I', 'W', 'E', 'F',
+};
+
+struct Report {
+    Str8 message;
+    Severenity severenity;
+    Source_Location source_location;
+    U64 count;
+};
+
+struct Reporter {
+    Linked_List<Report> reports;
+
+    void
+    report(Severenity severenity, Str8_View message, Source_Location source_location = Source_Location(std::source_location::current())) noexcept
+    {
+        if (reports.count > 0) {
+            Report &last_report = this->reports.last();
+
+            if (source_location_is_equals(&source_location, &last_report.source_location)) {
+                last_report.count++;
+                return;
+            }
+        }
+
+        reports.push_back(Report(Str8(message.data, message.length), severenity, source_location, 1));
     }
 };
 
