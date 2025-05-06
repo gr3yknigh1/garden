@@ -21,10 +21,10 @@
 #include "garden_runtime.h"
 #include "media/aseprite.cpp"
 
-U32
-generate_rect(Vertex *vertexes, F32 x, F32 y, F32 width, F32 height, Color4 color)
+Int32U
+generate_rect(Vertex *vertexes, Float32 x, Float32 y, Float32 width, Float32 height, Color4 color)
 {
-    U32 count = 0;
+    Int32U count = 0;
 
     // bottom-left triangle
     vertexes[count++] = {x + 0, y + 0, 0, 0, pack_rgba_to_int(color.r, color.g, color.b, color.a)};          // bottom-left
@@ -40,11 +40,11 @@ generate_rect(Vertex *vertexes, F32 x, F32 y, F32 width, F32 height, Color4 colo
 }
 
 // TODO(gr3yknigh1): Separate configuration at atlas and mesh size [2025/02/26]
-U32
+Int32U
 generate_rect_with_atlas(
-    Vertex *vertexes, F32 x, F32 y, F32 width, F32 height, Rect_F32 location, Atlas *atlas, Color4 color)
+    Vertex *vertexes, Float32 x, Float32 y, Float32 width, Float32 height, Rect_F32 location, Atlas *atlas, Color4 color)
 {
-    U32 count = 0;
+    Int32U count = 0;
 
     // bottom-left triangle
     vertexes[count++] = {
@@ -71,15 +71,15 @@ generate_rect_with_atlas(
     return count;
 }
 
-U32
+Int32U
 generate_geometry_from_tilemap(
-    Vertex *vertexes, U32 vertexes_capacity,
-    Tilemap *tilemap, F32 origin_x, F32 origin_y,
+    Vertex *vertexes, Int32U vertexes_capacity,
+    Tilemap *tilemap, Float32 origin_x, Float32 origin_y,
     Color4 color, Atlas *atlas)
 {
     assert(vertexes && tilemap && atlas);
 
-    U32 vertex_count = 0;
+    Int32U vertex_count = 0;
 
     for (int col_index = 0; col_index < tilemap->col_count; ++col_index) {
         for (int row_index = 0; row_index < tilemap->row_count; ++row_index) {
@@ -88,21 +88,21 @@ generate_geometry_from_tilemap(
             assert(vertex_count < vertexes_capacity);
 
 
-            F32 tile_x = origin_x + col_index * 100; // tilemap->tile_x_pixel_count;
-            F32 tile_y = origin_y + row_index * 100; // tilemap->tile_y_pixel_count;
+            Float32 tile_x = origin_x + col_index * 100; // tilemap->tile_x_pixel_count;
+            Float32 tile_y = origin_y + row_index * 100; // tilemap->tile_y_pixel_count;
 
             int tile_index_offset = get_offset_from_coords_of_2d_grid_array_rm(static_cast<int>(tilemap->col_count), col_index, row_index);
-            F32 tile_index = static_cast<F32>(tilemap->indexes[tile_index_offset]);
+            Float32 tile_index = static_cast<Float32>(tilemap->indexes[tile_index_offset]);
 
             Rect_F32 tile_location{};
-            tile_location.x = floorf(tile_index / tilemap->col_count) * static_cast<F32>(tilemap->tile_x_pixel_count);
-            tile_location.y = floorf(fmodf(tile_index, static_cast<F32>(tilemap->col_count))) * static_cast<F32>(tilemap->tile_y_pixel_count);
-            tile_location.width = static_cast<F32>(tilemap->tile_x_pixel_count);
-            tile_location.height = static_cast<F32>(tilemap->tile_y_pixel_count);
+            tile_location.x = floorf(tile_index / tilemap->col_count) * static_cast<Float32>(tilemap->tile_x_pixel_count);
+            tile_location.y = floorf(fmodf(tile_index, static_cast<Float32>(tilemap->col_count))) * static_cast<Float32>(tilemap->tile_y_pixel_count);
+            tile_location.width = static_cast<Float32>(tilemap->tile_x_pixel_count);
+            tile_location.height = static_cast<Float32>(tilemap->tile_y_pixel_count);
 
             vertex_count += generate_rect_with_atlas(
                 vertexes + vertex_count, tile_x, tile_y, 100, 100
-                /* static_cast<F32>(x_pixel_count), static_cast<F32>(y_pixel_count) */,
+                /* static_cast<Float32>(x_pixel_count), static_cast<Float32>(y_pixel_count) */,
                 tile_location, atlas, color);
         }
     }
@@ -117,7 +117,7 @@ get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y)
 }
 
 mm::Fixed_Arena
-mm::make_static_arena(USize capacity)
+mm::make_static_arena(SizeU capacity)
 {
     Fixed_Arena arena;
 
@@ -129,7 +129,7 @@ mm::make_static_arena(USize capacity)
 }
 
 Lexer
-make_lexer(Char8 *buffer, USize buffer_size)
+make_lexer(Char8 *buffer, SizeU buffer_size)
 {
     Lexer lexer;
 
@@ -368,16 +368,16 @@ mm::arena_pop(mm::Arena *arena, void *data)
 }
 #endif
 
-USize
+SizeU
 mm::reset(mm::Fixed_Arena *arena)
 {
-    USize was_occupied = arena->occupied;
+    SizeU was_occupied = arena->occupied;
     arena->occupied = 0;
     return was_occupied;
 }
 
 void *
-mm::allocate(mm::Fixed_Arena *arena, USize size, mm::Allocate_Options options)
+mm::allocate(mm::Fixed_Arena *arena, SizeU size, mm::Allocate_Options options)
 {
     if (arena == nullptr) {
         return nullptr;
@@ -406,23 +406,23 @@ mm::destroy(mm::Fixed_Arena *arena)
 }
 
 void
-mm::zero_memory(void *p, USize size)
+mm::zero_memory(void *p, SizeU size)
 {
-    for (USize i = 0; i < size; ++i) {
+    for (SizeU i = 0; i < size; ++i) {
         static_cast<Byte *>(p)[i] = 0;
     }
 }
 
 void
-mm::copy_memory(void *dst, const void *src, USize size)
+mm::copy_memory(void *dst, const void *src, SizeU size)
 {
-    for (USize index = 0; index < size; ++index) {
+    for (SizeU index = 0; index < size; ++index) {
         static_cast<Byte *>(dst)[index] = static_cast<const Byte *>(src)[index];
     }
 }
 
 static inline void *
-allocate_impl(USize size, mm::Allocate_Options options)
+allocate_impl(SizeU size, mm::Allocate_Options options)
 {
     void *result = std::malloc(size);
     if (result && HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
@@ -443,7 +443,7 @@ mm::dump_allocation_records(bool do_hex_dump)
 {
     std::list<Allocation_Record> *records = mm::get_allocation_records();
 
-    USize total_memory = 0;
+    SizeU total_memory = 0;
 
     for (const mm::Allocation_Record &record : *records) {
         printf("Allocation_Record(options=(%d) size=(%lld) result=(%p) location.file_name=(%s) location.line=(%u) location.function_name=(%s))\n",
@@ -464,7 +464,7 @@ mm::dump_allocation_records(bool do_hex_dump)
 }
 
 void *
-mm::allocate(USize size, mm::Allocate_Options options)
+mm::allocate(SizeU size, mm::Allocate_Options options)
 {
     return allocate_impl(size, options);
 }
@@ -486,7 +486,7 @@ mm::make_block_allocator(void)
 }
 
 mm::Block_Allocator
-mm::make_block_allocator(U64 blocks_count, USize block_size, USize block_fixed_size, U64 block_count_limit)
+mm::make_block_allocator(Int64U blocks_count, SizeU block_size, SizeU block_fixed_size, Int64U block_count_limit)
 {
     assert(blocks_count && block_size);
 
@@ -523,7 +523,7 @@ mm::make_block_allocator(U64 blocks_count, USize block_size, USize block_fixed_s
 
     Block *current_block = result.blocks.head;
 
-    for (U64 block_index = 0; block_index < blocks_count; ++block_index) {
+    for (Int64U block_index = 0; block_index < blocks_count; ++block_index) {
 
         if (block_fixed_size) {
             current_block->stack = make_stack_view(data_cursor, block_size);
@@ -560,7 +560,7 @@ mm::make_block_allocator(U64 blocks_count, USize block_size, USize block_fixed_s
 
 
 void *
-mm::allocate(mm::Block_Allocator *allocator, USize size, mm::Allocate_Options options)
+mm::allocate(mm::Block_Allocator *allocator, SizeU size, mm::Allocate_Options options)
 {
     assert(allocator && size);
 
@@ -675,7 +675,7 @@ mm::destroy_block_allocator(mm::Block_Allocator *allocator)
 }
 
 bool
-mm::can_hold(mm::Stack_View *view, USize size)
+mm::can_hold(mm::Stack_View *view, SizeU size)
 {
     assert(view && size);
     bool result = (size + view->occupied) <= view->capacity;
@@ -683,7 +683,7 @@ mm::can_hold(mm::Stack_View *view, USize size)
 }
 
 void *
-mm::allocate(mm::Stack_View *view, USize size)
+mm::allocate(mm::Stack_View *view, SizeU size)
 {
     if (!mm::can_hold(view, size)) {
         return nullptr;
@@ -695,7 +695,7 @@ mm::allocate(mm::Stack_View *view, USize size)
 }
 
 mm::Stack_View
-mm::make_stack_view(void *data, USize capacity)
+mm::make_stack_view(void *data, SizeU capacity)
 {
     mm::Stack_View result;
     result.data = data;
@@ -706,7 +706,7 @@ mm::make_stack_view(void *data, USize capacity)
 }
 
 mm::Stack_View
-mm::make_stack_view(USize capacity)
+mm::make_stack_view(SizeU capacity)
 {
     mm::Stack_View result;
     result.data = allocate(capacity);
@@ -715,19 +715,19 @@ mm::make_stack_view(USize capacity)
     return result;
 }
 
-USize
-mm::align(USize size, USize alignment)
+SizeU
+mm::align(SizeU size, SizeU alignment)
 {
-    USize result =  size + (alignment - size % alignment);
+    SizeU result =  size + (alignment - size % alignment);
     return result;
 }
 
-USize
-mm::page_align(USize size)
+SizeU
+mm::page_align(SizeU size)
 {
-    USize page_size = mm::get_page_size();
+    SizeU page_size = mm::get_page_size();
 
-    USize result = mm::align(size, page_size);
+    SizeU result = mm::align(size, page_size);
     return result;
 }
 
@@ -782,13 +782,13 @@ mm::next(mm::Block_Allocator *allocator, void *data)
     return nullptr;
 }
 
-USize
+SizeU
 get_file_size(FILE *file)
 {
     assert(file);
 
     fseek(file, 0, SEEK_END);
-    USize file_size = ftell(file);
+    SizeU file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
     assert(file_size);
 
@@ -797,12 +797,12 @@ get_file_size(FILE *file)
 
 
 void
-mm::hex_dump(void *buffer, USize buffer_size)
+mm::hex_dump(void *buffer, SizeU buffer_size)
 {
-    for (USize i = 0; i < buffer_size; i += 16) {
+    for (SizeU i = 0; i < buffer_size; i += 16) {
         printf("%06llx: ", i);
 
-        for (USize j = 0; j < 16; j++) {
+        for (SizeU j = 0; j < 16; j++) {
             if (i + j < buffer_size) {
                 printf("%02x ", static_cast<Byte *>(buffer)[i + j]);
             } else {
@@ -811,7 +811,7 @@ mm::hex_dump(void *buffer, USize buffer_size)
         }
 
         printf(" ");
-        for (USize j = 0; j < 16; j++) {
+        for (SizeU j = 0; j < 16; j++) {
             if (i + j < buffer_size) {
                 printf("%c", isprint(static_cast<Byte *>(buffer)[i + j]) ? static_cast<Byte *>(buffer)[i + j] : '.');
             }

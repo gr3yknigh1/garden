@@ -12,131 +12,131 @@
 
 #include "garden_runtime.h"
 
-constexpr U16 aseprite_header_magic_number = 0xA5E0;
-constexpr U16 aseprite_frame_magic_number = 0xF1FA;
+constexpr Int16U aseprite_header_magic_number = 0xA5E0;
+constexpr Int16U aseprite_frame_magic_number = 0xF1FA;
 
 #pragma pack(push, 1)
 struct Aseprite_Header {
-    U32 file_size;
+    Int32U file_size;
 
     //!
     //! @see `aseprite_header_magic_number`
     //!
-    U16 magic;
+    Int16U magic;
 
     //!
     //! @brief In pixels
     //!
-    U16 width;
+    Int16U width;
 
     //!
     //! @brief In pixels
     //!
-    U16 height;
+    Int16U height;
 
     //!
     //! @brief Bits per pixel. 32 bpp = RGBA, 16 bpp = Grayscale, 8 bpp = Indexed.
     //!
-    U16 color_depth;
+    Int16U color_depth;
 
-    U32 flags;
+    Int32U flags;
 
     //!
     //! @deprecated Use frame duration from frame header.
     //!
-    U16 speeed;
+    Int16U speeed;
 
     //!
     //! @brief Should be zero.
     //!
-    U32 padding0[2];
+    Int32U padding0[2];
 
     //!
     //! @brief Only for "Indexed sprites". TBD.
     //!
-    U8 palette_entry;
+    Int8U palette_entry;
 
     //!
     //! @brief Docs says ignore it.
     //!
-    U8 padding1[3];
+    Int8U padding1[3];
 
     //!
     //! @brief TBD.
     //!
-    U16 colors_count;
+    Int16U colors_count;
 
-    U8 pixel_width;
-    U8 pixel_height;
+    Int8U pixel_width;
+    Int8U pixel_height;
 
     //!
     //! @brief X position of the grid.
     //!
-    S16 x_position;
+    Int16S x_position;
 
     //!
     //! @brief Y position of the grid.
     //!
-    S16 y_position;
+    Int16S y_position;
 
     //!
     //! @brief Zero if no grid present.
     //!
-    U16 grid_width;
+    Int16U grid_width;
 
     //!
     //! @brief Zero if no grid present.
     //!
-    U16 grid_height;
+    Int16U grid_height;
 
     //!
     //! @brief For future as the docs says.
     //!
-    U8 padding2[84];
+    Int8U padding2[84];
 };
 
 struct Aseprite_Frame_Header {
-    U32 size;
+    Int32U size;
 
     //!
     //! @see `aseprite_frame_magic_number`
     //!
-    U16 magic;
+    Int16U magic;
 
     //!
     //! @brief If equals 0xFFFF, use `chunks_count_ex`.
     //!
-    U16 chunks_count;
+    Int16U chunks_count;
 
     //!
     //! @brief In milliseconds.
     //!
-    U16 frame_duration;
+    Int16U frame_duration;
 
     //!
     //! @brief For future as the docs says.
     //!
-    U8 padding0[2];
+    Int8U padding0[2];
 
     //!
     //! @brief If equals `0x0000`, use `chunks_count`.
     //!
-    U16 chunks_count_ex;
+    Int16U chunks_count_ex;
 };
 
 
 struct Aseprite_Palette_Chunk_0x0004 {
-    U16 packets_count;
+    Int16U packets_count;
 
     struct Packet {
-        U8 palette_offset;
-        U8 colors_count;
+        Int8U palette_offset;
+        Int8U colors_count;
     };
 
     Packet packet[1];
 };
 
-enum struct Aseprite_Chunk_Type : U16 {
+enum struct Aseprite_Chunk_Type : Int16U {
     //!
     //! @deprecated TDB.
     //!
@@ -154,10 +154,10 @@ enum struct Aseprite_Chunk_Type : U16 {
 
 
 struct Aseprite_Chunk {
-    U32 size;
+    Int32U size;
     Aseprite_Chunk_Type type;
 
-    U8 data[1];
+    Int8U data[1];
 };
 
 struct Aseprite_File {

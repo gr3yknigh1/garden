@@ -109,49 +109,49 @@
 
 EXPECT_TYPE_SIZE(void *, POINTER_SIZE);
 
-typedef signed char S8;
-typedef signed short S16;
-typedef signed int S32;
+typedef signed char Int8S;
+typedef signed short Int16S;
+typedef signed int Int32S;
 
 #if defined(_WIN32)
-    typedef signed long long S64;
+    typedef signed long long Int64S;
 #else
-    typedef signed long S64;
+    typedef signed long Int64S;
 #endif
 
-EXPECT_TYPE_SIZE(S8, 1);
-EXPECT_TYPE_SIZE(S16, 2);
-EXPECT_TYPE_SIZE(S32, 4);
-EXPECT_TYPE_SIZE(S64, 8);
+EXPECT_TYPE_SIZE(Int8S, 1);
+EXPECT_TYPE_SIZE(Int16S, 2);
+EXPECT_TYPE_SIZE(Int32S, 4);
+EXPECT_TYPE_SIZE(Int64S, 8);
 
-typedef unsigned char U8;
-typedef unsigned short U16;
-typedef unsigned int U32;
+typedef unsigned char Int8U;
+typedef unsigned short Int16U;
+typedef unsigned int Int32U;
 
 #if defined(_WIN32)
-    typedef unsigned long long U64;
+    typedef unsigned long long Int64U;
 #else
-    typedef unsigned long U64;
+    typedef unsigned long Int64U;
 #endif
 
-EXPECT_TYPE_SIZE(U8, 1);
-EXPECT_TYPE_SIZE(U16, 2);
-EXPECT_TYPE_SIZE(U32, 4);
-EXPECT_TYPE_SIZE(U64, 8);
+EXPECT_TYPE_SIZE(Int8U, 1);
+EXPECT_TYPE_SIZE(Int16U, 2);
+EXPECT_TYPE_SIZE(Int32U, 4);
+EXPECT_TYPE_SIZE(Int64U, 8);
 
-typedef float  F32;
-typedef double F64;
+typedef float  Float32;
+typedef double Float64;
 
-EXPECT_TYPE_SIZE(F32, 4);
-EXPECT_TYPE_SIZE(F64, 8);
+EXPECT_TYPE_SIZE(Float32, 4);
+EXPECT_TYPE_SIZE(Float64, 8);
 
-typedef U8  Byte;
-typedef U64 USize;
-typedef S64 SSize;
+typedef Int8U  Byte;
+typedef Int64U SizeU;
+typedef Int64S SizeS;
 
 EXPECT_TYPE_SIZE(Byte, 1);
-EXPECT_TYPE_SIZE(USize, POINTER_SIZE);
-EXPECT_TYPE_SIZE(SSize, POINTER_SIZE);
+EXPECT_TYPE_SIZE(SizeU, POINTER_SIZE);
+EXPECT_TYPE_SIZE(SizeS, POINTER_SIZE);
 
 typedef char     Char8;
 EXPECT_TYPE_SIZE(Char8, 1);
@@ -161,16 +161,16 @@ EXPECT_TYPE_SIZE(Char16, 2);
 
 // NOTE(gr3yknigh1): Explicitly distiguasing C style
 // string (null terminated).  [2024/05/26]
-typedef const Char8  *ZStr8;
-typedef const Char16 *ZStr16;
+typedef const Char8  *CStr8;
+typedef const Char16 *CStr16;
 
-EXPECT_TYPE_SIZE(ZStr8,  POINTER_SIZE);
-EXPECT_TYPE_SIZE(ZStr16, POINTER_SIZE);
+EXPECT_TYPE_SIZE(CStr8,  POINTER_SIZE);
+EXPECT_TYPE_SIZE(CStr16, POINTER_SIZE);
 
 #if !defined(__cplusplus)
     // TODO(gr3yknigh1): Typedef to _Bool if C11
     #if !defined(bool)
-        typedef S8 bool;
+        typedef Int8S bool;
     #endif
 
     #if !defined(true)
@@ -197,23 +197,23 @@ struct Asset;
 
 
 //! @note Two triangles.
-constexpr U8 TILEMAP_VERTEX_COUNT_PER_TILE = 6;
+constexpr Int8U TILEMAP_VERTEX_COUNT_PER_TILE = 6;
 
 struct Tilemap {
     //! @todo(gr3yknigh1): Implement uint parsing. [2025/02/23] #refactor #parsing
 
-    int row_count;
-    int col_count;
+    Int32S row_count;
+    Int32S col_count;
 
-    int tile_x_pixel_count;
-    int tile_y_pixel_count;
+    Int32S tile_x_pixel_count;
+    Int32S tile_y_pixel_count;
 
-    int *indexes;
-    size_t indexes_count;
+    Int32S *indexes;
+    SizeU indexes_count;
 
     Asset *texture_asset;
 
-    constexpr int tiles_count(void) noexcept { return this->row_count * this->col_count; }
+    constexpr Int32S tiles_count(void) noexcept { return this->row_count * this->col_count; }
 };
 
 //
@@ -229,29 +229,29 @@ struct Source_Location {
     //!
     //! @brief Name of the file (__FILE__).
     //!
-    ZStr8 file_name;
+    CStr8 file_name;
 
     //!
     //! @brief Number of the line (__LINE__).
     //!
-    U32 line;
+    Int32U line;
 
     //!
     //! @brief Number of the column.
     //!
-    U32 column;
+    Int32U column;
 
     //!
     //! @brief Decorated function name (__FUNCDNAME__).
     //!
-    ZStr8 function_name;
+    CStr8 function_name;
 
 
     constexpr Source_Location(std::source_location location) noexcept : file_name(location.file_name()), line(location.line()), column(location.column()), function_name(location.function_name()) {}
 };
 
 
-constexpr bool zstr8_is_equals(ZStr8 a, ZStr8 b) noexcept; // XXX
+constexpr bool zstr8_is_equals(CStr8 a, CStr8 b) noexcept; // XXX
 
 constexpr bool
 source_location_is_equals(const Source_Location *a, const Source_Location *b) noexcept
@@ -270,12 +270,12 @@ source_location_is_equals(const Source_Location *a, const Source_Location *b) no
 
 //! @todo(gr3yknigh1): Make it template? Or only `Rect` [2025/04/24] #refactor #renaming
 struct Rect_F32 {
-    F32 x;
-    F32 y;
+    Float32 x;
+    Float32 y;
 
     //! @todo(gr3yknigh1): Rename this? [2025/04/24] #refactor #renaming
-    F32 width;
-    F32 height;
+    Float32 width;
+    Float32 height;
 };
 
 //!
@@ -289,36 +289,36 @@ struct Atlas {
     //!
     //! @brief Count of horizontal pixels (width).
     //!
-    F32 x_pixel_count;
+    Float32 x_pixel_count;
 
     //!
     //! @brief Count of vertical pixels (height).
     //!
-    F32 y_pixel_count;
+    Float32 y_pixel_count;
 };
 
 //! @todo(gr3yknigh1): Rename it. Maybe RGBA_PackU32 [2025/04/14] #refactor
-typedef U32 packed_rgba_t;
+typedef Int32U packed_rgba_t;
 EXPECT_TYPE_SIZE(packed_rgba_t, 4);
 
 constexpr packed_rgba_t
-pack_rgba_to_int(U8 r, U8 g, U8 b, U8 a)
+pack_rgba_to_int(Int8U r, Int8U g, Int8U b, Int8U a)
 {
     return ((r) << 24) | ((g) << 16) | ((b) << 8) | (a);
 }
 
 #pragma pack(push, 1)
 struct Vertex {
-    F32 x, y;
-    F32 s, t;
+    Float32 x, y;
+    Float32 s, t;
     packed_rgba_t color;
 };
 #pragma pack(pop)
-EXPECT_TYPE_SIZE(Vertex, sizeof(F32) * 4 + sizeof(packed_rgba_t));
+EXPECT_TYPE_SIZE(Vertex, sizeof(Float32) * 4 + sizeof(packed_rgba_t));
 
 #pragma pack(push, 1)
 struct Color_RGBA_U8 {
-    U8 r, g, b, a;
+    Int8U r, g, b, a;
 };
 #pragma pack(pop)
 
@@ -334,15 +334,15 @@ struct Camera {
     glm::vec3 front;
     glm::vec3 up;
 
-    F32 yaw;
-    F32 pitch;
+    Float32 yaw;
+    Float32 pitch;
 
-    F32 speed;
-    F32 sensitivity;
-    F32 fov;
+    Float32 speed;
+    Float32 sensitivity;
+    Float32 fov;
 
-    F32 near;
-    F32 far;
+    Float32 near;
+    Float32 far;
 
     Camera_ViewMode view_mode;
 };
@@ -350,13 +350,13 @@ struct Camera {
 //!
 //! @param[out] rect Output array of vertexes
 //!
-U32 generate_rect(Vertex *rect, F32 x, F32 y, F32 width, F32 height, Color4 color);
+Int32U generate_rect(Vertex *rect, Float32 x, Float32 y, Float32 width, Float32 height, Color4 color);
 
 //!
 //! @param[out] rect Output array of vertexes
 //!
-U32 generate_rect_with_atlas(
-    Vertex *rect, F32 x, F32 y, F32 width, F32 height, Rect_F32 atlas_location, Atlas *altas, Color4 color);
+Int32U generate_rect_with_atlas(
+    Vertex *rect, Float32 x, Float32 y, Float32 width, Float32 height, Rect_F32 atlas_location, Atlas *altas, Color4 color);
 
 //!
 //! @param[out] vertexes Array of preallocated geometry-buffer to which this function will write.
@@ -365,7 +365,7 @@ U32 generate_rect_with_atlas(
 //!
 //! @param[in] atlas Information about count of pixels on whole image (used for generating UVs properly).
 //!
-U32 generate_geometry_from_tilemap(Vertex *vertexes, U32 vertexes_capacity, Tilemap *tilemap, F32 origin_x, F32 origin_y, Color4 color, Atlas *atlas);
+Int32U generate_geometry_from_tilemap(Vertex *vertexes, Int32U vertexes_capacity, Tilemap *tilemap, Float32 origin_x, Float32 origin_y, Color4 color, Atlas *atlas);
 
 //
 // MM (memory management):
@@ -375,25 +375,25 @@ namespace mm {
 
 struct Buffer_View {
     Byte *data;
-    USize size;
+    SizeU size;
 
     constexpr Buffer_View() noexcept : data(nullptr), size(0) {}
 };
 
-USize get_page_size(void);
+SizeU get_page_size(void);
 
-USize align(USize size, USize alignment);
-USize page_align(USize size);
+SizeU align(SizeU size, SizeU alignment);
+SizeU page_align(SizeU size);
 
-void zero_memory(void *p, USize size);
-void copy_memory(void *dst, const void *src, USize size);
+void zero_memory(void *p, SizeU size);
+void copy_memory(void *dst, const void *src, SizeU size);
 
 //!
 //! @brief Make offset by number of bytes specified.
 //!
 template<typename Ty = void>
 inline Ty *
-get_offset(Ty *pointer, USize offset)
+get_offset(Ty *pointer, SizeU offset)
 {
     return reinterpret_cast<Ty *>(reinterpret_cast<Byte *>(pointer) + offset);
 }
@@ -407,7 +407,7 @@ zero_struct(Ty *p)
 
 template <typename Ty>
 inline void
-zero_structs(Ty *p, U64 count)
+zero_structs(Ty *p, Int64U count)
 {
     zero_memory(reinterpret_cast<void *>(p), sizeof(*p) * count);
 }
@@ -417,12 +417,12 @@ zero_structs(Ty *p, U64 count)
 #define ALLOCATE_NO_OPTS     MAKE_FLAG(0)
 #define ALLOCATE_ZERO_MEMORY MAKE_FLAG(1)
 
-typedef U32 Allocate_Options;
+typedef Int32U Allocate_Options;
 
 //!
 //! @brief Base version of `allocate` function. Calls to platform specific allocation function.
 //!
-void *allocate(USize size, Allocate_Options options = ALLOCATE_NO_OPTS);
+void *allocate(SizeU size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
 template <typename Ty>
 inline Ty *
@@ -433,7 +433,7 @@ allocate_struct(Allocate_Options options = ALLOCATE_NO_OPTS)
 
 template <typename Ty>
 inline Ty *
-allocate_structs(U64 count, Allocate_Options options = ALLOCATE_NO_OPTS)
+allocate_structs(Int64U count, Allocate_Options options = ALLOCATE_NO_OPTS)
 {
     return static_cast<Ty *>(allocate(sizeof(Ty) * count, options));
 }
@@ -446,17 +446,17 @@ bool deallocate(void *p);
 //!
 struct Fixed_Arena {
     void *data;
-    USize capacity;
-    USize occupied;
+    SizeU capacity;
+    SizeU occupied;
 };
 
-Fixed_Arena  make_static_arena(USize capacity);
+Fixed_Arena  make_static_arena(SizeU capacity);
 bool         destroy(Fixed_Arena *arena);
-void *       allocate(Fixed_Arena *arena, USize size, Allocate_Options options = ALLOCATE_NO_OPTS);
+void *       allocate(Fixed_Arena *arena, SizeU size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
 template <typename Ty>
 inline Ty *
-allocate_structs(Fixed_Arena *arena, U64 count, Allocate_Options options = ALLOCATE_NO_OPTS)
+allocate_structs(Fixed_Arena *arena, Int64U count, Allocate_Options options = ALLOCATE_NO_OPTS)
 {
     return static_cast<Ty *>(allocate(arena, sizeof(Ty) * count, options));
 }
@@ -473,29 +473,29 @@ allocate_struct(Fixed_Arena *arena, Allocate_Options options = ALLOCATE_NO_OPTS)
 //!
 //! @returns Number of bytes which was occupied.
 //!
-USize reset(Fixed_Arena *arena);
+SizeU reset(Fixed_Arena *arena);
 
 struct Stack_View {
     void *data;
-    USize capacity;
-    USize occupied;
+    SizeU capacity;
+    SizeU occupied;
 };
 
-bool can_hold(Stack_View *view, USize size);
+bool can_hold(Stack_View *view, SizeU size);
 
 bool reset(Stack_View *view);
 
-void *allocate(Stack_View *view, USize size);
+void *allocate(Stack_View *view, SizeU size);
 
 //!
 //! @brief Initializes a view in stack-like data-block, and do not own it. Free it yourself!
 //!
-Stack_View make_stack_view(void *data, USize capacity);
+Stack_View make_stack_view(void *data, SizeU capacity);
 
 //!
 //! @brief Allocates new data-block and initializes a view in stack-like data-block, and do not own it. Free it yourself!
 //!
-Stack_View make_stack_view(USize capacity);
+Stack_View make_stack_view(SizeU capacity);
 
 struct Block {
     Block *next;
@@ -511,20 +511,20 @@ struct Block_Allocator {
     struct {
         Block *head;
         Block *tail;
-        U64 count;
+        Int64U count;
     } blocks;
 
     //!
     //! @brief If greater than zero, tells the allocator to allocate blocks with fixed size, which makes it basiclly
     //! behave like pool allocator. If equals zero, blocks will be allocated with specified size aligned to page size.
     //!
-    USize block_fixed_size;
+    SizeU block_fixed_size;
 
     //!
     //! @brief If greater than zero, sets limit on count of block, which can be allocated. If zero, there will be no
     //! limit to block allocation.
     //!
-    U64 block_count_limit;
+    Int64U block_count_limit;
 };
 
 Block_Allocator make_block_allocator();
@@ -532,9 +532,9 @@ Block_Allocator make_block_allocator();
 //!
 //! @brief Pre-allocates specified amount of blocks with specified size.
 //!
-Block_Allocator make_block_allocator(U64 blocks_count, USize block_size, USize block_fixed_size = 0, U64 block_count_limit = 0);
+Block_Allocator make_block_allocator(Int64U blocks_count, SizeU block_size, SizeU block_fixed_size = 0, Int64U block_count_limit = 0);
 
-void *allocate(Block_Allocator *allocator, USize size, Allocate_Options options = ALLOCATE_NO_OPTS);
+void *allocate(Block_Allocator *allocator, SizeU size, Allocate_Options options = ALLOCATE_NO_OPTS);
 
 template <typename Ty>
 inline Ty *
@@ -552,7 +552,7 @@ bool destroy_block_allocator(Block_Allocator *allocator);
 
 struct Allocation_Record {
     Allocate_Options options;
-    USize size;
+    SizeU size;
     void *result;
     Source_Location location;
 };
@@ -578,7 +578,7 @@ bool dump_allocation_records(bool do_hex_dump = false);
 //!
 //! @todo(gr3yknigh1): Add option to dump it all to other place (file for example) [2025/04/25]
 //!
-void hex_dump(void *buffer, U64 buffer_length);
+void hex_dump(void *buffer, Int64U buffer_length);
 
 struct Basic_Allocator {};
 
@@ -597,7 +597,7 @@ external_lifetime<Basic_Allocator>()
 }
 
 inline void *
-allocate([[maybe_unused]] Basic_Allocator *allocator, USize size, Allocate_Options options = ALLOCATE_NO_OPTS) noexcept
+allocate([[maybe_unused]] Basic_Allocator *allocator, SizeU size, Allocate_Options options = ALLOCATE_NO_OPTS) noexcept
 {
     return allocate(size, options);
 }
@@ -624,7 +624,7 @@ allocate_struct([[maybe_unused]] Basic_Allocator *allocator, Allocate_Options op
 //
 
 constexpr bool
-zstr8_is_equals(ZStr8 a, ZStr8 b) noexcept
+zstr8_is_equals(CStr8 a, CStr8 b) noexcept
 {
     while (a != nullptr && *a != 0 && b != nullptr && *b != 0) {
         if (*a != *b) {
@@ -753,7 +753,7 @@ str8_is_equals(const Str8 *a, const Str8 *b) noexcept
     }
 
     // TODO(gr3yknigh1): Do vectorization [2025/01/03]
-    for (U64 i = 0; i < a->length; ++i) {
+    for (Int64U i = 0; i < a->length; ++i) {
         if (a->data[i] != b->data[i]) {
             return false;
         }
@@ -1115,7 +1115,7 @@ struct Linked_List {
     Node *head;
     Node *tail;
 
-    U64 count;
+    Int64U count;
 
     Allocator_Type *allocator;
 
@@ -1231,7 +1231,7 @@ enum class Severenity {
     _Count,
 };
 
-Char8 SEVERENITY_LETTERS[static_cast<USize>(Severenity::_Count)] {
+Char8 SEVERENITY_LETTERS[static_cast<SizeU>(Severenity::_Count)] {
     '?', 'T', 'D', 'I', 'W', 'E', 'F',
 };
 
@@ -1239,7 +1239,7 @@ struct Report {
     Str8 message;
     Severenity severenity;
     Source_Location source_location;
-    U64 count;
+    Int64U count;
 };
 
 struct Reporter {
@@ -1270,15 +1270,15 @@ int get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y);
 //
 // OS:
 //
-USize get_file_size(FILE *file);
+SizeU get_file_size(FILE *file);
 
 //
 // Gameplay:
 //
 
 struct Input_State {
-    F32 x_direction;
-    F32 y_direction;
+    Float32 x_direction;
+    Float32 y_direction;
 };
 
 
@@ -1291,5 +1291,5 @@ struct Platform_Context {
     // NOTE(gr3yknigh1): Platform runtime will call issue a draw call if vertexes_count > 0 [2025/03/03]
     mm::Fixed_Arena vertexes_arena;
     Vertex *vertexes;
-    USize vertexes_count;
+    SizeU vertexes_count;
 };

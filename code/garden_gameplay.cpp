@@ -6,8 +6,8 @@
 #include "garden_gameplay.h"
 
 struct Game_Context {
-    F32 player_x, player_y, player_w, player_h;
-    F32 player_speed;
+    Float32 player_x, player_y, player_w, player_h;
+    Float32 player_speed;
 
     Rect_F32 atlas_location;
 };

@@ -65,14 +65,14 @@ typedef unsigned int size32_t;
 
 wchar_t path16_get_separator(void);
 
-bool path16_get_parent(const wchar_t *path, USize path_length, Str16_View *out);
+bool path16_get_parent(const wchar_t *path, SizeU path_length, Str16_View *out);
 
 //
 // Perf helpers:
 //
 
-S64 perf_get_counter_frequency(void);
-S64 perf_get_counter(void);
+Int64S perf_get_counter_frequency(void);
+Int64S perf_get_counter(void);
 uint64_t perf_get_cycles_count(void);
 
 #pragma pack(push, 1)
@@ -83,8 +83,8 @@ struct Perf_Block_Record {
     uint64_t line_number;
     uint64_t cycles_begin;
     uint64_t cycles_end;
-    S64 counter_begin;
-    S64 counter_end;
+    Int64S counter_begin;
+    Int64S counter_end;
 };
 #pragma pack(pop)
 
@@ -227,7 +227,7 @@ struct Vertex_Buffer_Layout {
 //
 bool make_vertex_buffer_layout(mm::Fixed_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity);
 
-Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, USize size);
+Vertex_Buffer_Attribute *vertex_buffer_layout_push_attr   (Vertex_Buffer_Layout *layout, unsigned int count, GLenum type, SizeU size);
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_float  (Vertex_Buffer_Layout *layout, unsigned int count);
 Vertex_Buffer_Attribute *vertex_buffer_layout_push_integer(Vertex_Buffer_Layout *layout, unsigned int count);
 
@@ -287,9 +287,9 @@ void Win32_HandleKeyboardInput(MSG message, Input_State *input_state);  // TODO
 //
 
 struct Clock {
-    S64 ticks_begin;
-    S64 ticks_end;
-    S64 frequency;
+    Int64S ticks_begin;
+    Int64S ticks_end;
+    Int64S frequency;
 };
 
 Clock make_clock(void);
@@ -300,7 +300,7 @@ double clock_tick(Clock *clock);
 // Media:
 //
 
-enum struct Bitmap_Picture_Header_Type : U32 {
+enum struct Bitmap_Picture_Header_Type : Int32U {
     BitmapCoreHeader = 12,
     Os22XBitmapHeader_S = 16,
     BitmapInfoHeader = 40,
@@ -311,7 +311,7 @@ enum struct Bitmap_Picture_Header_Type : U32 {
     BitmapV5Header = 124,
 };
 
-enum struct Bitmap_Picture_Compression_Method : U32 {
+enum struct Bitmap_Picture_Compression_Method : Int32U {
     RGB = 0,
     RLE8 = 1,
     RLE4 = 2,
@@ -327,31 +327,31 @@ enum struct Bitmap_Picture_Compression_Method : U32 {
 #pragma pack(push, 1)
 struct Bitmap_Picture_DIB_Header {
     Bitmap_Picture_Header_Type header_size;
-    U32 width;
-    U32 height;
-    U16 planes_count;
-    U16 depth;
+    Int32U width;
+    Int32U height;
+    Int16U planes_count;
+    Int16U depth;
     Bitmap_Picture_Compression_Method compression_method;
-    U32 image_size;
-    U32 x_pixel_per_meter;
-    U32 y_pixel_per_meter;
-    U32 color_used;
-    U32 color_important;
+    Int32U image_size;
+    Int32U x_pixel_per_meter;
+    Int32U y_pixel_per_meter;
+    Int32U color_used;
+    Int32U color_important;
 };
 #pragma pack(pop)
 
 #pragma pack(push, 1)
 struct Bitmap_Picture_Header {
-    U16 type;
-    U32 file_size;
-    U16 reserved[2];
-    U32 data_offset;
+    Int16U type;
+    Int32U file_size;
+    Int16U reserved[2];
+    Int32U data_offset;
 };
 #pragma pack(pop)
 
 #pragma pack(push, 1)
 struct Color_BGRA_U8 {
-    U8 b, g, r, a;
+    Int8U b, g, r, a;
 };
 #pragma pack(pop)
 
@@ -463,7 +463,7 @@ enum struct Asset_Store_Place {
 };
 
 struct Asset_Store {
-    static constexpr U16 max_asset_count = 1024;
+    static constexpr Int16U max_asset_count = 1024;
 
     mm::Block_Allocator asset_pool;
     mm::Block_Allocator asset_content;
@@ -500,7 +500,7 @@ enum struct Asset_Location_Type {
 
 struct File_Info {
     FILE *handle;
-    USize size;
+    SizeU size;
     Str8 path;
 
     ~File_Info(void) noexcept {}
@@ -561,7 +561,7 @@ struct Shader {
     GLuint program_id;
     char *source_code;
 
-    Shader_Module modules[static_cast<USize>(Shader_Module_Type::Count_)];
+    Shader_Module modules[static_cast<SizeU>(Shader_Module_Type::Count_)];
 };
 
 struct Asset {
@@ -583,7 +583,7 @@ struct Asset {
 Asset *asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path);
 
 // helper
-bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, USize buffer_size, Tilemap *tilemap);
+bool load_tilemap_from_buffer(Asset_Store *store, char *buffer, SizeU buffer_size, Tilemap *tilemap);
 bool asset_image_send_to_gpu(Asset_Store *store, Asset *asset, int unit, Shader *shader);
 
 bool shader_bind(Shader *shader);
@@ -597,7 +597,7 @@ struct Shader_Compile_Result {
     GLuint shader_program_id;
 };
 
-Shader_Compile_Result compile_shader(char *source_code, USize file_size);
+Shader_Compile_Result compile_shader(char *source_code, SizeU file_size);
 
 void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
 
@@ -827,16 +827,16 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     reset(&page_arena);
 
     Tilemap *tilemap = &tilemap_asset->u.tilemap;
-    F32 tilemap_position_x = 100, tilemap_position_y = 100;
+    Float32 tilemap_position_x = 100, tilemap_position_y = 100;
     Texture *tilemap_texture = &tilemap->texture_asset->u.texture;
 
     Atlas tilemap_atlas{
-        static_cast<F32>(tilemap_texture->width),
-        static_cast<F32>(tilemap_texture->height)
+        static_cast<Float32>(tilemap_texture->width),
+        static_cast<Float32>(tilemap_texture->height)
     };
 
     Vertex *tilemap_vertexes = mm::allocate_structs<Vertex>(tilemap->tiles_count() * TILEMAP_VERTEX_COUNT_PER_TILE); //! @todo Free later. #memory
-    U32 tilemap_vertexes_count = generate_geometry_from_tilemap(
+    Int32U tilemap_vertexes_count = generate_geometry_from_tilemap(
         tilemap_vertexes, tilemap->tiles_count() * TILEMAP_VERTEX_COUNT_PER_TILE, //! @todo #refactor
         tilemap, tilemap_position_x, tilemap_position_y,
         {255, 255, 255, 255}, &tilemap_atlas);
@@ -1043,7 +1043,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
                 assert(texture_uniform_loc != -1);
                 glUniform1i(texture_uniform_loc, tilemap_asset->u.tilemap.texture_asset->u.texture.unit);
 
-                USize vertex_buffer_size = tilemap_vertexes_count * sizeof(*tilemap_vertexes);
+                SizeU vertex_buffer_size = tilemap_vertexes_count * sizeof(*tilemap_vertexes);
                 glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, tilemap_vertexes, GL_DYNAMIC_DRAW);
                 glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride)); // TODO(gr3yknigh1): Replace layout [2025/03/30]
             }
@@ -1057,7 +1057,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
                 assert(texture_uniform_loc != -1);
                 glUniform1i(texture_uniform_loc, atlas_asset->u.texture.unit);
 
-                USize vertex_buffer_size = platform_context.vertexes_count * sizeof(*platform_context.vertexes);
+                SizeU vertex_buffer_size = platform_context.vertexes_count * sizeof(*platform_context.vertexes);
                 glBufferData(GL_ARRAY_BUFFER, vertex_buffer_size, platform_context.vertexes, GL_DYNAMIC_DRAW);
                 glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(vertex_buffer_size / vertex_buffer_layout.stride));
 
@@ -1124,7 +1124,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
 
 
 static void
-gui_show_helper_marker(ZStr8 description, ...)
+gui_show_helper_marker(CStr8 description, ...)
 {
     va_list args;
     va_start(args, description);
@@ -1200,9 +1200,9 @@ gui_show_debug_console(Console *console, bool *p_open)
         for (const Report &report : console->reporter->reports) {
 
             if (report.count > 1) {
-                ImGui::Text("%c: %s x%lu", SEVERENITY_LETTERS[static_cast<USize>(report.severenity)], report.message.data, report.count);
+                ImGui::Text("%c: %s x%lu", SEVERENITY_LETTERS[static_cast<SizeU>(report.severenity)], report.message.data, report.count);
             } else {
-                ImGui::Text("%c: %s", SEVERENITY_LETTERS[static_cast<USize>(report.severenity)], report.message.data);
+                ImGui::Text("%c: %s", SEVERENITY_LETTERS[static_cast<SizeU>(report.severenity)], report.message.data);
             }
 
             ImGui::SameLine();
@@ -1416,7 +1416,7 @@ compile_shader_from_str8(const char *string, Shader_Module_Type type)
         glGetShaderiv(id, GL_INFO_LOG_LENGTH, &log_length);
         assert(log_length);
 
-        USize log_buffer_size = log_length + 1;
+        SizeU log_buffer_size = log_length + 1;
         char *log_buffer = static_cast<char *>(mm::allocate(log_buffer_size));
         assert(log_buffer);
 
@@ -1448,7 +1448,7 @@ link_shader_program(GLuint vertex_shader, GLuint fragment_shader)
         GLint log_length{0};
         glGetProgramiv(id, GL_INFO_LOG_LENGTH, &log_length);
 
-        USize log_buffer_size = log_length + 1;
+        SizeU log_buffer_size = log_length + 1;
         char *log_buffer = static_cast<char *>(mm::allocate(log_buffer_size));
         assert(log_buffer);
 
@@ -1522,7 +1522,7 @@ vertex_buffer_layout_push_float(Vertex_Buffer_Layout *layout, unsigned int count
 void
 vertex_buffer_layout_build_attrs(const Vertex_Buffer_Layout *layout)
 {
-    USize offset = 0;
+    SizeU offset = 0;
 
     for (unsigned int attribute_index = 0; attribute_index < layout->attributes_count;
          ++attribute_index) {
@@ -1612,21 +1612,21 @@ camera_get_projection_matrix(Camera *camera, int viewport_width, int viewport_he
     exit(1);
 }
 
-S64
+Int64S
 perf_get_counter_frequency(void)
 {
     LARGE_INTEGER perf_frequency_result;
     QueryPerformanceFrequency(&perf_frequency_result);
-    S64 perf_frequency = perf_frequency_result.QuadPart;
+    Int64S perf_frequency = perf_frequency_result.QuadPart;
     return perf_frequency;
 }
 
-S64
+Int64S
 perf_get_counter(void)
 {
     LARGE_INTEGER perf_counter_result;
     QueryPerformanceCounter(&perf_counter_result);
-    S64 perf_counter = perf_counter_result.QuadPart;
+    Int64S perf_counter = perf_counter_result.QuadPart;
     return perf_counter;
 }
 
@@ -1640,10 +1640,10 @@ perf_get_cycles_count(void)
 void
 perf_block_record_print(const Perf_Block_Record *record)
 {
-    S64 perf_frequency = perf_get_counter_frequency();
+    Int64S perf_frequency = perf_get_counter_frequency();
 
-    S64 counter_elapsed = record->counter_end - record->counter_begin;
-    S64 ms_elapsed = (1000 * counter_elapsed) / perf_frequency;
+    Int64S counter_elapsed = record->counter_end - record->counter_begin;
+    Int64S ms_elapsed = (1000 * counter_elapsed) / perf_frequency;
     uint64_t cycles_elapsed = record->cycles_end - record->cycles_begin;
     uint64_t mega_cycles_elapsed = cycles_elapsed / (1000 * 1000);
 
@@ -1751,7 +1751,7 @@ gl_make_texture_from_pixels(void *pixels, size32_t width, size32_t height, Color
 }
 
 bool
-load_tilemap_from_buffer(Asset_Store *store, char *buffer, USize buffer_size, Tilemap *tilemap)
+load_tilemap_from_buffer(Asset_Store *store, char *buffer, SizeU buffer_size, Tilemap *tilemap)
 {
     Lexer lexer = make_lexer(buffer, buffer_size);
 
@@ -1813,7 +1813,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, USize buffer_size, Ti
             int *indexes_cursor = tilemap->indexes;
 
             do {
-                USize current_index_index = indexes_cursor - tilemap->indexes;
+                SizeU current_index_index = indexes_cursor - tilemap->indexes;
                 assert(current_index_index + 1 <= tilemap->indexes_count);
 
                 assert(lexer_parse_int(&lexer, indexes_cursor));
@@ -1822,7 +1822,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, USize buffer_size, Ti
                 ++indexes_cursor;
             } while(isdigit(lexer.lexeme));
 
-            USize filled_indexes = indexes_cursor - tilemap->indexes;
+            SizeU filled_indexes = indexes_cursor - tilemap->indexes;
             assert(filled_indexes == tilemap->indexes_count);
         }
 
@@ -1847,12 +1847,12 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, USize buffer_size, Ti
 }
 
 bool
-path16_get_parent(const wchar_t *path, USize path_length, Str16_View *out)
+path16_get_parent(const wchar_t *path, SizeU path_length, Str16_View *out)
 {
 
     out->data = path;
 
-    for (USize index = path_length - 1; index > 0; --index) {
+    for (SizeU index = path_length - 1; index > 0; --index) {
         wchar_t c = path[index];
 
         if (c == path16_get_separator()) {
@@ -1881,14 +1881,14 @@ watch_thread_worker(PVOID param)
         nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     assert(watch_dir && watch_dir != INVALID_HANDLE_VALUE);
 
-    U32 file_notify_info_capacity = 1024;
+    Int32U file_notify_info_capacity = 1024;
     FILE_NOTIFY_INFORMATION *file_notify_info = mm::allocate_structs<FILE_NOTIFY_INFORMATION>(file_notify_info_capacity, ALLOCATE_ZERO_MEMORY);
     assert(file_notify_info);
 
     // TODO(gr3yknigh1): Replace with String_Builder [2025/03/10]
     uint64_t target_dir_length = str16_get_length(context->target_dir);
-    USize target_dir_buffer_size = target_dir_length * sizeof(*context->target_dir);
-    USize file_full_path_buffer_capacity = (target_dir_length + MAX_PATH) * sizeof(*context->target_dir);
+    SizeU target_dir_buffer_size = target_dir_length * sizeof(*context->target_dir);
+    SizeU file_full_path_buffer_capacity = (target_dir_length + MAX_PATH) * sizeof(*context->target_dir);
 
     void *file_full_path_buffer = mm::allocate(file_full_path_buffer_capacity, ALLOCATE_ZERO_MEMORY);
     assert(file_full_path_buffer && "Buy more RAM");
@@ -1910,12 +1910,12 @@ watch_thread_worker(PVOID param)
 
             const wchar_t *changed_file_relative_path = current_notify_info->FileName;
             const uint64_t changed_file_relative_path_length = current_notify_info->FileNameLength / sizeof(*current_notify_info->FileName);
-            const USize changed_file_relative_path_buffer_size = current_notify_info->FileNameLength;
+            const SizeU changed_file_relative_path_buffer_size = current_notify_info->FileNameLength;
 
             if (context->notification_routine != nullptr) {
                 // TODO(gr3yknigh1): Replace with some kind of Path_Join function [2025/03/10]
                 static_cast<wchar_t *>(file_full_path_buffer)[target_dir_length] = path16_get_separator();
-                USize separator_size = sizeof(wchar_t);
+                SizeU separator_size = sizeof(wchar_t);
                 mm::copy_memory( mm::get_offset(file_full_path_buffer, target_dir_buffer_size + separator_size), static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
 
                 Str16_View file_name(static_cast<wchar_t *>(file_full_path_buffer), target_dir_length + 1 + changed_file_relative_path_length);
@@ -2103,7 +2103,7 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
         #endif
     } else if (asset->type == Asset_Type::Tilemap) {
 
-        USize buffer_size = asset->location.u.file.size + 1;
+        SizeU buffer_size = asset->location.u.file.size + 1;
         void* buffer = mm::allocate(buffer_size);
         mm::zero_memory(buffer, buffer_size);
 
@@ -2167,7 +2167,7 @@ asset_reload(Asset_Store *store, Asset *asset)
             asset->u.shader.program_id = compile_result.shader_program_id;
             assert(asset->u.shader.program_id);
         } else if (asset->type == Asset_Type::Tilemap) {
-            USize buffer_size = asset->location.u.file.size + 1;
+            SizeU buffer_size = asset->location.u.file.size + 1;
             void* buffer = mm::allocate(buffer_size);
             mm::zero_memory(buffer, buffer_size);
 
@@ -2335,7 +2335,7 @@ asset_watch_routine([[maybe_unused]] Watch_Context *watch_context, const Str16_V
 }
 
 Shader_Compile_Result
-compile_shader(char *source_code, USize file_size)
+compile_shader(char *source_code, SizeU file_size)
 {
     Lexer lexer = make_lexer(source_code, file_size);
 
@@ -2461,10 +2461,10 @@ bind_vertex_buffer(Vertex_Buffer *buffer)
 }
 
 
-USize
+SizeU
 mm::get_page_size(void)
 {
-    USize result;
+    SizeU result;
     SYSTEM_INFO system_info = {0};
     GetSystemInfo(&system_info);
     result = system_info.dwPageSize;
