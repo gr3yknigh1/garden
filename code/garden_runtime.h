@@ -40,12 +40,16 @@
     #define STATIC_ARRAY_COUNT(ARRAY_PTR) (sizeof((ARRAY_PTR)) / sizeof(*(ARRAY_PTR)))
 #endif
 
-#if !defined(STRINGIFY_IMPL)
-    #define STRINGIFY_IMPL(X) #X
+#if !defined(STRINGIFY2)
+    #define STRINGIFY2(X) #X
+#endif
+
+#if !defined(STRINGIFY1)
+    #define STRINGIFY1(X) STRINGIFY2(X)
 #endif
 
 #if !defined(STRINGIFY)
-    #define STRINGIFY(X) STRINGIFY_IMPL(X)
+    #define STRINGIFY(X) STRINGIFY1(X)
 #endif
 
 #if !defined(FOR_LINKED_LIST)
@@ -58,6 +62,8 @@
     #define EXPAND(X) X
 #endif
 
+#define WRAP(X) (X)
+
 
 #if !defined(__cplusplus)
     // NOTE(gr3yknigh1): Require C11 [2025/04/07]
@@ -66,7 +72,10 @@
     #define STATIC_ASSERT(COND, MSG) static_assert((COND), MSG)
 #endif
 
+#define _TYPE_SIZE_STRING(TYPE) "(" STRINGIFY(sizeof TYPE) " bytes)"
+
 #define EXPECT_TYPE_SIZE(TYPE, SIZE) STATIC_ASSERT(sizeof(TYPE) == (SIZE), "Expected " #TYPE " to be the size of " #SIZE)
+#define EXPECT_TYPE_HAVE_SAVE_SIZE(T0, T1) STATIC_ASSERT(sizeof(T0) == sizeof(T1), "Expected " #T0 " have the same size as " #T1)
 
 
 /*
@@ -103,20 +112,15 @@
 
  */
 
-#if !defined(POINTER_SIZE)
-    #define POINTER_SIZE 8
-#endif
+typedef void * Pointer;
 
-EXPECT_TYPE_SIZE(void *, POINTER_SIZE);
-
-typedef signed char Int8S;
-typedef signed short Int16S;
-typedef signed int Int32S;
-
+typedef signed char      Int8S;
+typedef signed short     Int16S;
+typedef signed int       Int32S;
 #if defined(_WIN32)
-    typedef signed long long Int64S;
+typedef signed long long Int64S;
 #else
-    typedef signed long Int64S;
+typedef signed long      Int64S;
 #endif
 
 EXPECT_TYPE_SIZE(Int8S, 1);
@@ -149,9 +153,11 @@ typedef Int8U  Byte;
 typedef Int64U SizeU;
 typedef Int64S SizeS;
 
+typedef SizeU PointerDiff;
+
 EXPECT_TYPE_SIZE(Byte, 1);
-EXPECT_TYPE_SIZE(SizeU, POINTER_SIZE);
-EXPECT_TYPE_SIZE(SizeS, POINTER_SIZE);
+EXPECT_TYPE_HAVE_SAVE_SIZE(SizeU, Pointer);
+EXPECT_TYPE_HAVE_SAVE_SIZE(SizeS, Pointer);
 
 typedef char     Char8;
 EXPECT_TYPE_SIZE(Char8, 1);
@@ -159,31 +165,27 @@ EXPECT_TYPE_SIZE(Char8, 1);
 typedef wchar_t  Char16;
 EXPECT_TYPE_SIZE(Char16, 2);
 
-// NOTE(gr3yknigh1): Explicitly distiguasing C style
-// string (null terminated).  [2024/05/26]
 typedef const Char8  *CStr8;
 typedef const Char16 *CStr16;
 
-EXPECT_TYPE_SIZE(CStr8,  POINTER_SIZE);
-EXPECT_TYPE_SIZE(CStr16, POINTER_SIZE);
-
 #if !defined(__cplusplus)
-    // TODO(gr3yknigh1): Typedef to _Bool if C11
-    #if !defined(bool)
-        typedef Int8S bool;
-    #endif
 
-    #if !defined(true)
-        #define true 1
-    #endif // true
+#if !defined(bool)
+typedef Int8S bool;
+#endif
 
-    #if !defined(false)
-        #define false 0
-    #endif // false
+#if !defined(true)
+#define true 1
+#endif
 
-    #if !defined(NULL)
-        #define NULL ((void *)0)
-    #endif // NULL
+#if !defined(false)
+#define false 0
+#endif
+
+#endif
+
+#if !defined(NULL)
+#define NULL ((void *)0)
 #endif
 
 EXPECT_TYPE_SIZE(bool, 1);
@@ -1245,6 +1247,9 @@ struct Report {
 struct Reporter {
     Linked_List<Report> reports;
 
+
+    // TODO(gr3yknigh1): Replace Source_Location with Traceback. [2025/05/06]
+    // TODO(gr3yknigh1): Expose va_args and make it format. [2025/05/06]
     void
     report(Severenity severenity, Str8_View message, Source_Location source_location = Source_Location(std::source_location::current())) noexcept
     {
@@ -1273,12 +1278,49 @@ int get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y);
 SizeU get_file_size(FILE *file);
 
 //
+// Keyboard input
+//
+
+enum struct Key_Code {
+    None,
+
+    Left,
+    Up,
+    Right,
+    Down,
+    A,
+    D,
+    Q,
+    S,
+    W,
+
+    Count_
+};
+
+enum struct Key_State {
+    Up,
+    Down,
+};
+
+struct Key {
+    Key_State now;
+    Key_State was;
+
+    //!
+    //! @brief Repeat count.
+    //!
+    Int16U count;
+};
+
+//
 // Gameplay:
 //
 
 struct Input_State {
     Float32 x_direction;
     Float32 y_direction;
+
+    Key keys[static_cast<SizeU>(Key_Code::Count_)];
 };
 
 

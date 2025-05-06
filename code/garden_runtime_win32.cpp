@@ -242,23 +242,152 @@ struct Vertex_Buffer {
 bool make_vertex_buffer(Vertex_Buffer *buffer);
 bool bind_vertex_buffer(Vertex_Buffer *buffer);
 
-//
-// @brief Initializes vertex buffer layout.
-//
-// @pre
-//     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer)
-//     glBindVertexArray(vertex_array);
-//
+//!
+//! @brief Initializes vertex buffer layout.
+//!
+//! @pre
+//!     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer)
+//!     glBindVertexArray(vertex_array);
+//!
 void vertex_buffer_layout_build_attrs(const Vertex_Buffer_Layout *layout);
 
 
-struct Win32_Key_State {
-    short vk_code;
-    short flags;
-    short scan_code;
-    short repeat_count;
+//!
+//! @brief Virtual-key codes.
+//!
+//! @ref https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+//!
+enum struct Win32_VK_Code : Int16S {
+    //!
+    //! @brief Left mouse button.
+    //!
+    LButton = 0x01,
 
-    MSG native_message;
+    //!
+    //! @brief Right mouse button.
+    //!
+    RButton = 0x02,
+
+    //!
+    //! @brief Control-break processing.
+    //!
+    Cancel = 0x03,
+
+    //!
+    //! @brief Middle mouse button.
+    //!
+    MButton = 0x04,
+
+    //!
+    //! @brief X1 mouse button.
+    //!
+    XButton1 = 0x05,
+
+    //!
+    //! @brief X2 mouse button.
+    //!
+    XButton2 = 0x06,
+
+    /* ...skipped */
+
+    //!
+    //! @brief Shift key.
+    //!
+    Shift = 0x10,
+
+    //!
+    //! @brief Control key.
+    //!
+    Control = 0x11,
+
+    //!
+    //! @brief Alt key.
+    //!
+    Menu = 0x12,
+
+    /* ...skipped */
+
+    //!
+    //! @brief Left arrow key.
+    //!
+    Left = 0x25,
+
+    //!
+    //! @brief Up arrow key.
+    //!
+    Up = 0x26,
+
+    //!
+    //! @brief Right arrow key.
+    //!
+    Right = 0x27,
+
+    //!
+    //! @brief Down arrow key.
+    //!
+    Down = 0x28,
+
+    /* ...skipped */
+
+    //!
+    //! @brief A key.
+    //!
+    A = 0x41,
+
+    //!
+    //! @brief D key.
+    //!
+    D = 0x44,
+
+    //!
+    //! @brief Q key.
+    //!
+    Q = 0x51,
+
+    //!
+    //! @brief S key.
+    //!
+    S = 0x53,
+
+    //!
+    //! @brief W key.
+    //!
+    W = 0x57,
+
+    /* ...skipped */
+};
+
+struct Win32_Key_State {
+    Win32_VK_Code code;
+
+    union {
+        /*
+         * NOTE(gr3yknigh1): This is lparam layout of @TBD [2025/05/06]
+         *
+         *               0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
+         * repeat_count: ^                                  ^
+         * scan_code:                                          ^                    ^
+         * extended:                                                                   ^
+         * reserved:                                                                      ^        ^
+         * context_code:                                                                              ^
+         * prev_state:                                                                                   ^
+         * trans_state:                                                                                     ^
+         *
+         */
+
+        struct {
+            Int16U repeat_count : 16;
+            Int8U scan_code : 8;
+            bool extended : 1;
+            Int8U reserved : 4;
+            bool alt_context : 1;
+            bool was_up : 1;
+            bool is_up : 1;
+        };
+        Int32U flags;
+    };
+
+    MSG message;
 };
 
 #if !defined(WIN32_KEYSTATE_IS_EXTENDED)
@@ -271,16 +400,12 @@ struct Win32_Key_State {
 
 Win32_Key_State win32_convert_msg_to_key_state(MSG message);
 
-bool win32_is_vk_pressed(int vk);
+//!
+//! @param[out, optional] changed_key
+//!
+bool win32_apply_changes_to_key(Input_State *input_state, Win32_Key_State key_state, Key_Code *changed_key = nullptr);
+bool win32_is_vk_pressed(Int32S vk);
 
-//
-// Handle keyboard input for Win32 API layer.
-//
-// @param[in] message Actual windows message which received in mainloop.
-//
-// @param[out] input_state Output Input_State of the game.
-//
-void Win32_HandleKeyboardInput(MSG message, Input_State *input_state);  // TODO
 
 //
 // Time:
@@ -895,48 +1020,80 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
             if (message.message == WM_QUIT) {
                 global_should_terminate = true;
             } else {
+
                 switch (message.message) {
                 case WM_KEYUP:
                 case WM_KEYDOWN:
                 case WM_SYSKEYUP:
                 case WM_SYSKEYDOWN: {
-                    Win32_Key_State key = win32_convert_msg_to_key_state(message);
+                    //
+                    // @ref <https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input>
+                    //
 
-                    if (key.vk_code == VK_ESCAPE || key.vk_code == 0x51) {  // 0x51 - `Q` key.
+                    Win32_Key_State win32_key_state {};
+
+                    win32_key_state.code = static_cast<Win32_VK_Code>(LOWORD(message.wParam));
+                    win32_key_state.flags = message.lParam;
+
+                    if (WIN32_KEYSTATE_IS_EXTENDED(&win32_key_state)) {
+                        win32_key_state.scan_code = MAKEWORD(win32_key_state.scan_code, 0xE0);
+                    }
+
+                    win32_key_state.repeat_count = LOWORD(message.lParam);
+
+                    switch (win32_key_state.code) {
+                    case Win32_VK_Code::Shift:   // converts to VK_LSHIFT or VK_RSHIFT
+                    case Win32_VK_Code::Control: // converts to VK_LCONTROL or VK_RCONTROL
+                    case Win32_VK_Code::Menu:    // converts to VK_LMENU or VK_RMENU
+                        win32_key_state.code = static_cast<Win32_VK_Code>(LOWORD(MapVirtualKeyW(win32_key_state.scan_code, MAPVK_VSC_TO_VK_EX)));
+                        break;
+                    }
+
+                    Key_Code changed_key = Key_Code::None;
+
+                    Char8 format_buffer[1024];
+                    if (!win32_apply_changes_to_key(&platform_context.input_state, win32_key_state, &changed_key)) {
+
+                        // TODO(gr3yknigh1): Replace wth String_Builder [2025/05/06]
+                        sprintf(format_buffer, "VK not handled: scan_code(0x%x)", win32_key_state.scan_code);
+
+                        frame_reporter.report(Severenity::Error, format_buffer);
+                        /* TODO(gr3yknigh1): Handle an error [2025/05/06] */
+                    } else {
+                        sprintf(format_buffer, "Handled key input: scan_code(0x%x) key(%d)", win32_key_state.scan_code, static_cast<Int32S>(changed_key));
+
+                        frame_reporter.report(Severenity::Info, format_buffer);
+                    }
+
+                        #if 0
+                    if (key.code == VK_ESCAPE || key.code == 0x51) {  // 0x51 - `Q` key.
                         global_should_terminate = true;
                     }
 
-                    // if (key.vk_code == 0x45) {  // 0x45 - `E` key
-                    //     atlas_location = { 0, 0, 16, 16 };
-                    // }
-
-                    // if (key.vk_code == 0x46) {  // 0x46 - `F` key
-                    //     atlas_location = { 16, 0, 16, 16 };
-                    // }
-
-                    if (!WIN32_KEYSTATE_IS_RELEASED(&key)) {
-                        if (key.vk_code == VK_LEFT) {
+                    if (!key.is_up) {
+                        if (key.code == VK_LEFT) {
                             platform_context.input_state.x_direction = -1;
-                        } else if (key.vk_code == VK_RIGHT) {
+                        } else if (key.code == VK_RIGHT) {
                             platform_context.input_state.x_direction = +1;
                         }
 
-                        if (key.vk_code == VK_DOWN) {
+                        if (key.code == VK_DOWN) {
                             platform_context.input_state.y_direction = -1;
-                        } else if (key.vk_code == VK_UP) {
+                        } else if (key.code == VK_UP) {
                             platform_context.input_state.y_direction = +1;
                         }
                     } else {
-                        if ((key.vk_code == VK_LEFT   && !win32_is_vk_pressed(VK_RIGHT))
-                        || ((key.vk_code == VK_RIGHT) && !win32_is_vk_pressed(VK_LEFT))) {
+                        if ((key.code == VK_LEFT   && !win32_is_vk_pressed(VK_RIGHT))
+                        || ((key.code == VK_RIGHT) && !win32_is_vk_pressed(VK_LEFT))) {
                             platform_context.input_state.x_direction = 0;
                         }
 
-                        if ((key.vk_code == VK_DOWN && !win32_is_vk_pressed(VK_UP))
-                         || (key.vk_code == VK_UP && !win32_is_vk_pressed(VK_DOWN))) {
+                        if ((key.code == VK_DOWN && !win32_is_vk_pressed(VK_UP))
+                         || (key.code == VK_UP && !win32_is_vk_pressed(VK_DOWN))) {
                             platform_context.input_state.y_direction = 0;
                         }
                     }
+                    #endif
 
                 } break;
                 }
@@ -1121,7 +1278,6 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
 
     return 0;
 }
-
 
 static void
 gui_show_helper_marker(CStr8 description, ...)
@@ -1652,34 +1808,84 @@ perf_block_record_print(const Perf_Block_Record *record)
         record->function, record->label, counter_elapsed, ms_elapsed, mega_cycles_elapsed);
 }
 
-Win32_Key_State
-win32_convert_msg_to_key_state(MSG message)
+bool
+win32_apply_changes_to_key(Input_State *input_state, Win32_Key_State key_state, Key_Code *changed_key)
 {
-    //
-    // @ref <https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input>
-    //
-    Win32_Key_State key_state;
+    Key *key = nullptr;
 
+    switch (key_state.code) {
+    case Win32_VK_Code::LButton:
+    case Win32_VK_Code::RButton:
+    case Win32_VK_Code::Cancel:
+    case Win32_VK_Code::MButton:
+    case Win32_VK_Code::XButton1:
+    case Win32_VK_Code::XButton2:
+    case Win32_VK_Code::Shift:
+    case Win32_VK_Code::Control:
+    case Win32_VK_Code::Menu:
+        return false;
 
-    key_state.vk_code = LOWORD(message.wParam);
-    key_state.flags = HIWORD(message.lParam);
-    key_state.scan_code = LOBYTE(key_state.flags);
-
-    if (WIN32_KEYSTATE_IS_EXTENDED(&key_state)) {
-        key_state.scan_code = MAKEWORD(key_state.scan_code, 0xE0);
-    }
-
-    key_state.repeat_count = LOWORD(message.lParam);
-
-    switch (key_state.vk_code) {
-    case VK_SHIFT:   // converts to VK_LSHIFT or VK_RSHIFT
-    case VK_CONTROL: // converts to VK_LCONTROL or VK_RCONTROL
-    case VK_MENU:    // converts to VK_LMENU or VK_RMENU
-        key_state.vk_code = LOWORD(MapVirtualKeyW(key_state.scan_code, MAPVK_VSC_TO_VK_EX));
+    case Win32_VK_Code::Left:
+        key = &input_state->keys[static_cast<SizeU>(Key_Code::Left)];
         break;
+
+    case Win32_VK_Code::Up:
+        key = &input_state->keys[static_cast<SizeU>(Key_Code::Up)];
+        break;
+
+    case Win32_VK_Code::Right:
+        key = &input_state->keys[static_cast<SizeU>(Key_Code::Right)];
+        break;
+
+    case Win32_VK_Code::Down:
+        key = &input_state->keys[static_cast<SizeU>(Key_Code::Down)];
+        break;
+
+    case Win32_VK_Code::A:
+        key = &input_state->keys[static_cast<SizeU>(Key_Code::A)];
+        break;
+
+    case Win32_VK_Code::D:
+        key = &input_state->keys[static_cast<SizeU>(Key_Code::D)];
+        break;
+
+    case Win32_VK_Code::Q:
+        key = &input_state->keys[static_cast<SizeU>(Key_Code::Q)];
+        break;
+
+    case Win32_VK_Code::S:
+        key = &input_state->keys[static_cast<SizeU>(Key_Code::S)];
+        break;
+
+    case Win32_VK_Code::W:
+        key = &input_state->keys[static_cast<SizeU>(Key_Code::W)];
+        break;
+
+    default:
+        return false;
     }
 
-    return key_state;
+    assert(key);
+
+    key->count = key_state.repeat_count;
+
+    if (key_state.was_up) {
+        key->was = Key_State::Up;
+    } else {
+        key->was = Key_State::Down;
+    }
+
+    if (key_state.is_up) {
+        key->now = Key_State::Up;
+    } else {
+        key->now = Key_State::Down;
+    }
+
+    if (changed_key) {
+        *changed_key = static_cast<Key_Code>(key - input_state->keys);
+    }
+
+    return true;
 }
 
 Clock
@@ -1703,9 +1909,9 @@ clock_tick(Clock *clock)
 }
 
 bool
-win32_is_vk_pressed(int vk)
+win32_is_vk_pressed(Int32S vk)
 {
-    short state = GetKeyState(vk);
+    Int16S state = GetKeyState(vk);
     bool result = state >> 15;
     return result;
 }
