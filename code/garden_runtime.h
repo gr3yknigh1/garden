@@ -1317,12 +1317,19 @@ struct Key {
 //
 
 struct Input_State {
+#if 0   // @cleanup
     Float32 x_direction;
     Float32 y_direction;
+#endif
 
     Key keys[static_cast<SizeU>(Key_Code::Count_)];
 };
 
+inline bool
+is_key_down(Input_State *state, Key_Code code)
+{
+    return state->keys[static_cast<SizeU>(code)].now == Key_State::Down;
+}
 
 struct Platform_Context {
     Input_State input_state;

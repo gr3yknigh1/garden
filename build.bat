@@ -1,11 +1,11 @@
-@rem 
+@rem
 @rem  FILE          build.bat
-@rem 
+@rem
 @rem  AUTHORS
 @rem                Ilya Akkuzin <gr3yknigh1@gmail.com>
-@rem 
+@rem
 @rem  NOTICE        (c) Copyright 2025 by Ilya Akkuzin. All rights reserved.
-@rem 
+@rem
 
 @echo off
 
@@ -18,5 +18,4 @@ if [%build_type%]==[] set build_type=Debug
 
 htask -C %project_folder% build --build-type %build_type%
 
-pause
-
+@rem pause

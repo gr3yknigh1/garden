@@ -45,13 +45,32 @@ game_on_load([[maybe_unused]] Platform_Context *platform, Game_Context *game)
 extern "C" __declspec(dllexport) void
 game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
 {
-    if (absolute(platform->input_state.x_direction) >= 1.0f && absolute(platform->input_state.y_direction) >= 1.0f) {
-        // TODO(gr3yknigh1): Fix strange floating-point bug for diagonal movement [2025/02/20]
-        normalize_vector2f(&platform->input_state.x_direction, &platform->input_state.y_direction);
+    Float32 x_direction = 0, y_direction = 0;
+
+    if (is_key_down(&platform->input_state, Key_Code::Left)) {
+        x_direction = -1;
     }
 
-    game->player_x += game->player_speed * platform->input_state.x_direction * delta_time;
-    game->player_y += game->player_speed * platform->input_state.y_direction * delta_time;
+    if (is_key_down(&platform->input_state, Key_Code::Right)) {
+        x_direction = +1;
+    }
+
+    if (is_key_down(&platform->input_state, Key_Code::Down)) {
+        y_direction = -1;
+    }
+
+    if (is_key_down(&platform->input_state, Key_Code::Up)) {
+        y_direction = +1;
+    }
+
+    if (absolute(x_direction) >= 1.0f && absolute(y_direction) >= 1.0f) {
+        // TODO(gr3yknigh1): Fix strange floating-point bug for diagonal movement [2025/02/20]
+        normalize_vector2f(&x_direction, &y_direction);
+    }
+
+
+    game->player_x += game->player_speed * x_direction * delta_time;
+    game->player_y += game->player_speed * y_direction * delta_time;
 
 
     platform->camera->position.x = -game->player_x - game->player_w / 2;

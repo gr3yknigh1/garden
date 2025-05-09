@@ -1064,37 +1064,6 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
 
                         frame_reporter.report(Severenity::Info, format_buffer);
                     }
-
-                        #if 0
-                    if (key.code == VK_ESCAPE || key.code == 0x51) {  // 0x51 - `Q` key.
-                        global_should_terminate = true;
-                    }
-
-                    if (!key.is_up) {
-                        if (key.code == VK_LEFT) {
-                            platform_context.input_state.x_direction = -1;
-                        } else if (key.code == VK_RIGHT) {
-                            platform_context.input_state.x_direction = +1;
-                        }
-
-                        if (key.code == VK_DOWN) {
-                            platform_context.input_state.y_direction = -1;
-                        } else if (key.code == VK_UP) {
-                            platform_context.input_state.y_direction = +1;
-                        }
-                    } else {
-                        if ((key.code == VK_LEFT   && !win32_is_vk_pressed(VK_RIGHT))
-                        || ((key.code == VK_RIGHT) && !win32_is_vk_pressed(VK_LEFT))) {
-                            platform_context.input_state.x_direction = 0;
-                        }
-
-                        if ((key.code == VK_DOWN && !win32_is_vk_pressed(VK_UP))
-                         || (key.code == VK_UP && !win32_is_vk_pressed(VK_DOWN))) {
-                            platform_context.input_state.y_direction = 0;
-                        }
-                    }
-                    #endif
-
                 } break;
                 }
             }
