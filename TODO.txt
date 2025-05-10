@@ -2,25 +2,54 @@
 TODOs
 -----
 
+- [X] Expose input system to gameplay code. See `Input_State`.
+  #input
+
+- [ ] Make it so errors of shader compilation wont crash the game
+  #assets #error_handling
+  > I want to achieve this with error handling system: see `Reporter` (or I need to rename
+  it to `Error_Reporter` -- because it might be too generic).
+
+- [ ] Unify uniform access interface in order to make hot-reload of shaders easier.
+  #shaders #assets
+
+- [ ] Rework sprite rendering from atlas: make it so you can index sprites in atlas more easly (and hot-reload it) #assets #rendering
+
+- [ ] Simple Entitiy system.
+  #gameplay
+  > We need some kind of generic entitiy system with pool of entities which
+  has some kind of concrete properties, which are overlapped with different entities.
+
+  - [ ] Sprite collision #collision
+
+- [ ] XAudio player exposed to gameplay code
+  #sound
+
+- [ ] Text rendering
+  #renderer
+  > Want to use freetype library.
+
+- [ ] Implement gamepad support (with DirectInput, like in `gr3yknigh1/gfs`)
+  #input
+
+- [ ] Aseprite importer and hot-reload mechanism
+  #assets
+
+- [ ] LDtk editor integration!
+  #assets
+  > ref: https://ldtk.io/
+
+ARCHIVE
+-------
+
 - [V] Basic atlas rendering #renderer #assets
 - [V] Basic input-layer #input
 - [V] Hot-reload gameplay code
 - [V] Hot-reload assets (draft) #assets
 - [V] Unify asset hot-reload system (make it so you define assets to load and track them changing on disk
-
-- [X] Tilemap rendering (map) #assets #rendering
-- [X] Move camera with player. #rendering  <<<<
-- [ ] Rework input system? I don't like that platform-layer defines changes for Input_State
-
-- [ ] Sine-wave play with XAudio2 (or DirectSound?) #sound
-- [ ] Play .wav files with XAudio2 #sound
-- [ ] Rework sprite rendering from atlas: make it so you can index sprites in atlas more easly (and hot-reload it) #assets #rendering
-- [ ] Sprite collision #collision
-- [ ] Implement gamepad support (with DirectInput, like in `gr3yknigh1/gfs`)
-- [ ] Bring some kind of UI library (like ImGUI)
-- [ ] Text rendering (brobably with freetype library)
-- [ ] Unify uniform access interface in order to make hot-reload of shaders easier. #shaders #assets
-
+- [V] Tilemap rendering (map) #assets #rendering
+- [V] Move camera with player. #rendering
+- [V] Bring some ImGUI.
 
 TAGS
 ====

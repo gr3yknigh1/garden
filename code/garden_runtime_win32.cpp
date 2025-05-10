@@ -2645,3 +2645,18 @@ mm::get_page_size(void)
     result = system_info.dwPageSize;
     return result;
 }
+
+
+void *
+mm::allocate_page(SizeU size)
+{
+    void *result = VirtualAlloc(nullptr, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    return result;
+}
+
+bool
+mm::deallocate_page(void *data)
+{
+    bool result = VirtualFree(nullptr, 0, MEM_RELEASE);
+    return result;
+}

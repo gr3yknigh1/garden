@@ -121,7 +121,7 @@ mm::make_static_arena(SizeU capacity)
 {
     Fixed_Arena arena;
 
-    arena.data     = allocate(capacity);
+    arena.data     = mm::allocate<Byte>(capacity);
     arena.capacity = capacity;
     arena.occupied = 0;
 
@@ -345,29 +345,6 @@ lexer_check_peeked_and_advance(Lexer *lexer, Str8_View sv)
 }
 
 
-#if 0
-// TODO(gr3yknigh1): Reuse for stack [2025/04/07]
-bool
-mm::arena_pop(mm::Arena *arena, void *data)
-{
-    if (arena == nullptr || data == nullptr) {
-        return false;
-    }
-
-    if (arena->data == nullptr || arena->occupied < sizeof(arena->occupied) || arena->capacity == 0) {
-        return false;
-    }
-
-    size_t *data_size = static_cast<size_t *>(data) - 1;
-
-    assert(static_cast<mm::byte *>(data) + *data_size == static_cast<mm::byte *>(arena->data) + arena->occupied);
-    arena->occupied -= *data_size;
-    arena->occupied -= sizeof(*data_size);
-
-    return true;
-}
-#endif
-
 SizeU
 mm::reset(mm::Fixed_Arena *arena)
 {
@@ -377,23 +354,18 @@ mm::reset(mm::Fixed_Arena *arena)
 }
 
 void *
-mm::allocate(mm::Fixed_Arena *arena, SizeU size, mm::Allocate_Options options)
+mm::Fixed_Arena::allocate(SizeU size, mm::Allocate_Options *options = nullptr)
 {
-    if (arena == nullptr) {
+    if (this->occupied + size > this->capacity) {
         return nullptr;
     }
 
-    if (arena->occupied + size > arena->capacity) {
-        return nullptr;
-    }
-
-    void *allocated = mm::get_offset(arena->data, arena->occupied);
-
-    if (HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
+    void *allocated = mm::get_offset(this->data, this->occupied);
+    if (allocated && !options->no_zero_memory) {
         mm::zero_memory(allocated, size);
     }
 
-    arena->occupied += size;
+    this->occupied += size;
     return allocated;
 }
 
@@ -402,32 +374,6 @@ mm::destroy(mm::Fixed_Arena *arena)
 {
     bool result = mm::deallocate(arena->data);
     mm::zero_struct<mm::Fixed_Arena>(arena);
-    return result;
-}
-
-void
-mm::zero_memory(void *p, SizeU size)
-{
-    for (SizeU i = 0; i < size; ++i) {
-        static_cast<Byte *>(p)[i] = 0;
-    }
-}
-
-void
-mm::copy_memory(void *dst, const void *src, SizeU size)
-{
-    for (SizeU index = 0; index < size; ++index) {
-        static_cast<Byte *>(dst)[index] = static_cast<const Byte *>(src)[index];
-    }
-}
-
-static inline void *
-allocate_impl(SizeU size, mm::Allocate_Options options)
-{
-    void *result = std::malloc(size);
-    if (result && HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
-        mm::zero_memory(result, size);
-    }
     return result;
 }
 
@@ -463,18 +409,11 @@ mm::dump_allocation_records(bool do_hex_dump)
     return total_memory > 0;
 }
 
-void *
-mm::allocate(SizeU size, mm::Allocate_Options options)
-{
-    return allocate_impl(size, options);
-}
-
 bool
 mm::deallocate(void *p)
 {
-    // TODO(gr3yknigh1): Use platform functions for allocations [2025/04/07]
-    std::free(p);
-    return true;
+    bool result = mm::deallocate_page(p);
+    return result;
 }
 
 mm::Block_Allocator

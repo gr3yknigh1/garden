@@ -369,6 +369,14 @@ Int32U generate_rect_with_atlas(
 //!
 Int32U generate_geometry_from_tilemap(Vertex *vertexes, Int32U vertexes_capacity, Tilemap *tilemap, Float32 origin_x, Float32 origin_y, Color4 color, Atlas *atlas);
 
+
+//
+// TDB
+//
+
+void *platform_allocate(SizeU size) noexcept;
+void *platform_deallocate(SizeU size) noexcept;
+
 //
 // MM (memory management):
 //
@@ -387,8 +395,21 @@ SizeU get_page_size(void);
 SizeU align(SizeU size, SizeU alignment);
 SizeU page_align(SizeU size);
 
-void zero_memory(void *p, SizeU size);
-void copy_memory(void *dst, const void *src, SizeU size);
+template<typename Ty = Byte> void
+zero_memory(Ty *data, Int64U count = 1)
+{
+    for (SizeU index = 0; index < count * sizeof(Ty); ++index) {
+        static_cast<Byte *>(data)[index] = 0;
+    }
+}
+
+template<typename Ty = Byte> void
+copy_memory(Ty *destination, const Ty *source, Int64U count = 1)
+{
+    for (SizeU index = 0; index < count * sizeof(Ty); ++index) {
+        static_cast<Byte *>(destination)[index] = static_cast<const Byte *>(source)[index];
+    }
+}
 
 //!
 //! @brief Make offset by number of bytes specified.
@@ -400,46 +421,28 @@ get_offset(Ty *pointer, SizeU offset)
     return reinterpret_cast<Ty *>(reinterpret_cast<Byte *>(pointer) + offset);
 }
 
-template <typename Ty>
-inline void
-zero_struct(Ty *p)
+struct Allocate_Options {
+    struct {
+        bool no_zero_memory : 1;
+    };
+
+    constexpr Allocate_Options(void) noexcept : no_zero_memory(false) {}
+};
+
+void *allocate_page(SizeU size);
+void *deallocate_page(void *data);
+
+template <typename Ty> Ty *
+allocate(Int64U count = 1, const Allocate_Options *options = nullptr)
 {
-    zero_memory(reinterpret_cast<void *>(p), sizeof(*p));
+    Ty *result = static_cast<Ty *>(allocate_page(count * sizeof(Ty)));
+
+    if (result && options && !options->no_zero_memory) {
+        mm::zero_memory<Ty>(result, count);
+    }
+
+    return result;
 }
-
-template <typename Ty>
-inline void
-zero_structs(Ty *p, Int64U count)
-{
-    zero_memory(reinterpret_cast<void *>(p), sizeof(*p) * count);
-}
-
-//! @todo(gr3yknigh1): Replace with typed-enum class [2025/04/07] #refactor
-
-#define ALLOCATE_NO_OPTS     MAKE_FLAG(0)
-#define ALLOCATE_ZERO_MEMORY MAKE_FLAG(1)
-
-typedef Int32U Allocate_Options;
-
-//!
-//! @brief Base version of `allocate` function. Calls to platform specific allocation function.
-//!
-void *allocate(SizeU size, Allocate_Options options = ALLOCATE_NO_OPTS);
-
-template <typename Ty>
-inline Ty *
-allocate_struct(Allocate_Options options = ALLOCATE_NO_OPTS)
-{
-    return static_cast<Ty *>(allocate(sizeof(Ty), options));
-}
-
-template <typename Ty>
-inline Ty *
-allocate_structs(Int64U count, Allocate_Options options = ALLOCATE_NO_OPTS)
-{
-    return static_cast<Ty *>(allocate(sizeof(Ty) * count, options));
-}
-
 
 bool deallocate(void *p);
 
@@ -450,25 +453,13 @@ struct Fixed_Arena {
     void *data;
     SizeU capacity;
     SizeU occupied;
+
+    void *allocate(SizeU size, mm::Allocate_Options *options = nullptr) noexcept;
+    SizeU reset(void) noexcept;
 };
 
-Fixed_Arena  make_static_arena(SizeU capacity);
-bool         destroy(Fixed_Arena *arena);
-void *       allocate(Fixed_Arena *arena, SizeU size, Allocate_Options options = ALLOCATE_NO_OPTS);
-
-template <typename Ty>
-inline Ty *
-allocate_structs(Fixed_Arena *arena, Int64U count, Allocate_Options options = ALLOCATE_NO_OPTS)
-{
-    return static_cast<Ty *>(allocate(arena, sizeof(Ty) * count, options));
-}
-
-template <typename Ty>
-inline Ty *
-allocate_struct(Fixed_Arena *arena, Allocate_Options options = ALLOCATE_NO_OPTS)
-{
-    return static_cast<Ty *>(allocate(arena, sizeof(Ty), options));
-}
+Fixed_Arena make_fixed_arena(SizeU capacity);
+bool destroy(Fixed_Arena *arena);
 
 //!
 //! @brief Sets occupied field to zero. All allocated memory can be overwritten.
@@ -536,11 +527,11 @@ Block_Allocator make_block_allocator();
 //!
 Block_Allocator make_block_allocator(Int64U blocks_count, SizeU block_size, SizeU block_fixed_size = 0, Int64U block_count_limit = 0);
 
-void *allocate(Block_Allocator *allocator, SizeU size, Allocate_Options options = ALLOCATE_NO_OPTS);
+void *allocate(Block_Allocator *allocator, SizeU size, const Allocate_Options *options = nullptr);
 
 template <typename Ty>
 inline Ty *
-allocate_struct(Block_Allocator *allocator, Allocate_Options options = ALLOCATE_NO_OPTS)
+allocate_struct(Block_Allocator *allocator, const Allocate_Options *options = nullptr)
 {
     return static_cast<Ty *>(allocate(allocator, sizeof(Ty), options));
 }
@@ -581,41 +572,6 @@ bool dump_allocation_records(bool do_hex_dump = false);
 //! @todo(gr3yknigh1): Add option to dump it all to other place (file for example) [2025/04/25]
 //!
 void hex_dump(void *buffer, Int64U buffer_length);
-
-struct Basic_Allocator {};
-
-template<typename Allocator_Type>
-constexpr bool
-external_lifetime()
-{
-    return true;
-}
-
-template<>
-constexpr bool
-external_lifetime<Basic_Allocator>()
-{
-    return false;
-}
-
-inline void *
-allocate([[maybe_unused]] Basic_Allocator *allocator, SizeU size, Allocate_Options options = ALLOCATE_NO_OPTS) noexcept
-{
-    return allocate(size, options);
-}
-
-inline bool
-deallocate([[maybe_unused]] Basic_Allocator *allocator, void *data) noexcept
-{
-    return deallocate(data);
-}
-
-template <typename Ty>
-inline Ty *
-allocate_struct([[maybe_unused]] Basic_Allocator *allocator, Allocate_Options options = ALLOCATE_NO_OPTS)
-{
-    return static_cast<Ty *>(allocate(allocator, sizeof(Ty), options));
-}
 
 } // namespace mm
 
@@ -676,7 +632,7 @@ str8_copy_to(void *destination, const char *source, size_t source_length, size_t
 //!
 class Str8 {
 public:
-    char *data;
+    Char8 *data;
     size_t length;
 
     constexpr inline Str8(void) noexcept : data(nullptr), length(0) {}
@@ -693,10 +649,7 @@ public:
         if (data_ && length_) {
             size_t data_buffer_size = this->length + 1;
 
-            void *data_buffer = mm::allocate(data_buffer_size);
-            assert(data_buffer);
-            mm::zero_memory(data_buffer, data_buffer_size);
-
+            Char8 *data_buffer = mm::allocate<Char8>(data_buffer_size);
             str8_copy_to(data_buffer, data_, this->length, data_buffer_size);
 
             this->data = static_cast<char *>(data_buffer);
@@ -961,6 +914,7 @@ str16_view_is_equals(const Str16_View a, const char *str) noexcept
     return str16_view_is_equals(a, b);
 }
 
+
 //
 // Parsing:
 //
@@ -1002,7 +956,7 @@ bool      lexer_is_end(Lexer *lexer);
 // Containers:
 //
 
-template <typename Value_Type, typename Allocator_Type = mm::Basic_Allocator>
+template <typename Value_Type>
 struct Linked_List {
 
     struct Node {
@@ -1119,25 +1073,26 @@ struct Linked_List {
 
     Int64U count;
 
+    constexpr
+    Linked_List(void) noexcept
+        : head(nullptr), tail(nullptr), count(0)
+    {
+    }
+
+    #if 0
+
     Allocator_Type *allocator;
 
     constexpr
-    Linked_List(void) noexcept
-        : head(nullptr), tail(nullptr), count(0), allocator(nullptr)
-    {
-    }
-
-    constexpr
     Linked_List(Allocator_Type *allocator) noexcept
-        : head(nullptr), tail(nullptr), count(0), allocator(allocator)
+        : head(nullptr), tail(nullptr), count(0)
     {
     }
+    #endif
 
     ~Linked_List(void) noexcept
     {
-        if constexpr (!mm::external_lifetime<Allocator_Type>()) {
-            this->clear();
-        }
+        this->clear();
     }
 
     Linked_List(const Linked_List &) = delete;
@@ -1146,7 +1101,7 @@ struct Linked_List {
     bool
     push_back(const Value_Type &new_element) noexcept
     {
-        Node *new_node = mm::allocate_struct<Node>(this->allocator, ALLOCATE_ZERO_MEMORY);
+        Node *new_node = mm::allocate<Node>();
 
         if (!new_node) {
             return false;
