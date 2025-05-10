@@ -30,6 +30,12 @@ add_library(glad STATIC
 
 target_include_directories(glad PUBLIC glad)
 
+add_library(nocheck INTERFACE
+  nocheck/include/nocheck/nocheck.h
+)
+
+target_include_directories(nocheck INTERFACE nocheck/include)
+
 #
 # Runtime:
 #

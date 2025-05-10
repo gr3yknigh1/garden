@@ -1,0 +1,7 @@
+
+- [ ] Make normal static library with CMake
+- [ ] Add more macros for different usecases
+- [ ] Catch signal (try research toward handling segfaults and etc.)
+- [ ] Run cases in parallel
+- [ ] Make cmake script for auto test discovering
+
