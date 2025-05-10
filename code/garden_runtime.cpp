@@ -87,7 +87,6 @@ generate_geometry_from_tilemap(
             //! @todo(gr3yknigh1): Improve error handling [2025/04/24] #refactor #error_handling
             assert(vertex_count < vertexes_capacity);
 
-
             Float32 tile_x = origin_x + col_index * 100; // tilemap->tile_x_pixel_count;
             Float32 tile_y = origin_y + row_index * 100; // tilemap->tile_y_pixel_count;
 
@@ -794,7 +793,6 @@ get_file_size(FILE *file)
 
     return file_size;
 }
-
 
 void
 mm::hex_dump(void *buffer, SizeU buffer_size)

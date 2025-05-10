@@ -68,7 +68,6 @@ game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
         normalize_vector2f(&x_direction, &y_direction);
     }
 
-
     game->player_x += game->player_speed * x_direction * delta_time;
     game->player_y += game->player_speed * y_direction * delta_time;
 

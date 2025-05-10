@@ -778,6 +778,24 @@ struct Str8_View {
 };
 
 
+bool
+str8_is_equals(const Str8 *a, const Str8_View *b)
+{
+    if (a->length != b->length) {
+        return false;
+    }
+
+    // TODO(gr3yknigh1): Do vectorization [2025/01/03]
+    for (Int64U i = 0; i < a->length; ++i) {
+        if (a->data[i] != b->data[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
 inline Str8_View
 str8_view_capture_until(const char **cursor, char until)
 {
@@ -1256,7 +1274,7 @@ struct Reporter {
         if (reports.count > 0) {
             Report &last_report = this->reports.last();
 
-            if (source_location_is_equals(&source_location, &last_report.source_location)) {
+            if (source_location_is_equals(&source_location, &last_report.source_location) && str8_is_equals(&last_report.message, &message)) {
                 last_report.count++;
                 return;
             }
