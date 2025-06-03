@@ -118,16 +118,16 @@ game_on_fini([[maybe_unused]] Platform_Context *platform, [[maybe_unused]] Game_
 }
 
 
-float
-absolute(float x)
+Float32
+absolute(Float32 x)
 {
     return x < 0 ? -x : x;
 }
 
 void
-normalize_vector2f(float *x, float *y)
+normalize_vector2f(Float32 *x, Float32 *y)
 {
-    float magnitude = sqrtf(powf(*x, 2) + powf(*y, 2));
+    Float32 magnitude = sqrtf(powf(*x, 2) + powf(*y, 2));
     *x /= magnitude;
     *y /= magnitude;
 }
