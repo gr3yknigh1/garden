@@ -819,7 +819,7 @@ mm::hex_dump(void *buffer, SizeU buffer_size)
 }
 
 
-#if defined(_WIN32)
+#if defined(NOC_DETECT_PLATFORM_WINDOWS)
     #include "garden_runtime_win32.cpp"
 #else
     #error "Unhandled platform! No runtime was included"

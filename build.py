@@ -1,8 +1,19 @@
+from __future__ import annotations
+
+from os.path import dirname, realpath
+import os.path
 
 from hbuild import *
 
 
-glm = add_external_library("glm", location="glm", tool=ExternalTool.CMAKE)
+project_folder = dirname(realpath(__file__))
+assets_folder  = os.path.sep.join([project_folder, "assets"])
+
+noc = add_external_library("noc", location=r"P:\nostdlib")
+                           #location="git+https://github.com/gr3yknigh1/nostdlib@bb611ec")
+#noxx = add_external_library("noxx", location=r"P:\nostdlib")
+
+glm = add_external_library("glm", location="glm", tool=BuildTool.CMAKE)
 target_includes(glm, Access.PUBLIC, includes=["glm"])
 
 
@@ -35,19 +46,23 @@ garden_runtime = add_executable("garden", sources=(
     "code/garden_runtime.cpp",
 ))
 
-target_links(garden_runtime, links=[glad, imgui, glm])
+target_links(garden_runtime, links=[glad, imgui, glm, noc])
 target_macros(garden_runtime, macros=dict(
     GARDEN_GAMEPLAY_DLL_NAME="garden_gameplay.dll",
-    GARDEN_ASSETS_FOLDER="${PROJECT_SOURCE_DIR}/assets", # TODO(gr3yknigh1): Expose to the tasks.py level [2025/05/02] #buildsystem
+    GARDEN_ASSETS_FOLDER=f"{assets_folder!r}", # TODO(gr3yknigh1): Expose to the tasks.py level [2025/05/02] #buildsystem
     _CRT_SECURE_NO_WARNINGS="1",
 ))
 
 garden_gameplay = add_library("garden_gameplay", dynamic=True, sources=(
     "code/garden_runtime.cpp",
 ))
-target_links(garden_gameplay, links=[glad, imgui, glm])
+target_links(garden_gameplay, links=[glad, imgui, glm, noc])
 target_macros(garden_gameplay, macros=dict(
     GARDEN_GAMEPLAY_CODE="1",
     GARDEN_GAMEPLAY_DLL_NAME="garden_gameplay.dll",
     _CRT_SECURE_NO_WARNINGS="1",
 ))
+
+add_package("garden", targets=[
+    garden_runtime, garden_gameplay,
+])

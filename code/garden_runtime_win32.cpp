@@ -726,7 +726,9 @@ Shader_Compile_Result compile_shader(char *source_code, SizeU file_size);
 
 void asset_watch_routine(Watch_Context *, const Str16_View, File_Action, void *);
 
-#if GARDEN_GAMEPLAY_CODE == 1
+#pragma message( "GARDEN_GAMEPLAY_CODE='" STRINGIFY(GARDEN_GAMEPLAY_CODE) "'" )
+
+#if GARDEN_GAMEPLAY_CODE
 
 #include "garden_gameplay.cpp"
 
@@ -1053,7 +1055,6 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
 
                     Char8 format_buffer[1024];
                     if (!win32_apply_changes_to_key(&platform_context.input_state, win32_key_state, &changed_key)) {
-
                         // TODO(gr3yknigh1): Replace wth String_Builder [2025/05/06]
                         sprintf(format_buffer, "VK not handled: scan_code(0x%x)", win32_key_state.scan_code);
 
@@ -1249,7 +1250,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
 }
 
 static void
-gui_show_helper_marker(CStr8 description, ...)
+gui_show_helper_marker(const char *description, ...)
 {
     va_list args;
     va_start(args, description);

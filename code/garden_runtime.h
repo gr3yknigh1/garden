@@ -20,6 +20,8 @@
 #include <glm/ext.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
+#include <noc/noc.h>
+
 #if !defined(MAKE_FLAG)
     #define MAKE_FLAG(INDEX) (1 << (INDEX))
 #endif
@@ -112,85 +114,6 @@
 
  */
 
-typedef void * Pointer;
-
-typedef signed char      Int8S;
-typedef signed short     Int16S;
-typedef signed int       Int32S;
-#if defined(_WIN32)
-typedef signed long long Int64S;
-#else
-typedef signed long      Int64S;
-#endif
-
-EXPECT_TYPE_SIZE(Int8S, 1);
-EXPECT_TYPE_SIZE(Int16S, 2);
-EXPECT_TYPE_SIZE(Int32S, 4);
-EXPECT_TYPE_SIZE(Int64S, 8);
-
-typedef unsigned char Int8U;
-typedef unsigned short Int16U;
-typedef unsigned int Int32U;
-
-#if defined(_WIN32)
-    typedef unsigned long long Int64U;
-#else
-    typedef unsigned long Int64U;
-#endif
-
-EXPECT_TYPE_SIZE(Int8U, 1);
-EXPECT_TYPE_SIZE(Int16U, 2);
-EXPECT_TYPE_SIZE(Int32U, 4);
-EXPECT_TYPE_SIZE(Int64U, 8);
-
-typedef float  Float32;
-typedef double Float64;
-
-EXPECT_TYPE_SIZE(Float32, 4);
-EXPECT_TYPE_SIZE(Float64, 8);
-
-typedef Int8U  Byte;
-typedef Int64U SizeU;
-typedef Int64S SizeS;
-
-typedef SizeU PointerDiff;
-
-EXPECT_TYPE_SIZE(Byte, 1);
-EXPECT_TYPE_HAVE_SAVE_SIZE(SizeU, Pointer);
-EXPECT_TYPE_HAVE_SAVE_SIZE(SizeS, Pointer);
-
-typedef char     Char8;
-EXPECT_TYPE_SIZE(Char8, 1);
-
-typedef wchar_t  Char16;
-EXPECT_TYPE_SIZE(Char16, 2);
-
-typedef const Char8  *CStr8;
-typedef const Char16 *CStr16;
-
-#if !defined(__cplusplus)
-
-#if !defined(bool)
-typedef Int8S bool;
-#endif
-
-#if !defined(true)
-#define true 1
-#endif
-
-#if !defined(false)
-#define false 0
-#endif
-
-#endif
-
-#if !defined(NULL)
-#define NULL ((void *)0)
-#endif
-
-EXPECT_TYPE_SIZE(bool, 1);
-
-
 //
 // Tilemaps:
 //
@@ -231,7 +154,7 @@ struct Source_Location {
     //!
     //! @brief Name of the file (__FILE__).
     //!
-    CStr8 file_name;
+    const char *file_name;
 
     //!
     //! @brief Number of the line (__LINE__).
@@ -246,14 +169,14 @@ struct Source_Location {
     //!
     //! @brief Decorated function name (__FUNCDNAME__).
     //!
-    CStr8 function_name;
+    const char *function_name;
 
 
     constexpr Source_Location(std::source_location location) noexcept : file_name(location.file_name()), line(location.line()), column(location.column()), function_name(location.function_name()) {}
 };
 
 
-constexpr bool zstr8_is_equals(CStr8 a, CStr8 b) noexcept; // XXX
+constexpr bool zstr8_is_equals(Str8Z a, Str8Z b) noexcept; // XXX
 
 constexpr bool
 source_location_is_equals(const Source_Location *a, const Source_Location *b) noexcept
@@ -261,8 +184,8 @@ source_location_is_equals(const Source_Location *a, const Source_Location *b) no
     return (
         a->line == b->line
         && a->column && b->column
-        && zstr8_is_equals(a->function_name, b->function_name)
-        && zstr8_is_equals(a->file_name, b->file_name)
+        && noc_str8z_is_equals(a->function_name, b->function_name)
+        && noc_str8z_is_equals(a->file_name, b->file_name)
     );
 }
 
@@ -358,7 +281,7 @@ Int32U generate_rect(Vertex *rect, Float32 x, Float32 y, Float32 width, Float32 
 //! @param[out] rect Output array of vertexes
 //!
 Int32U generate_rect_with_atlas(
-    Vertex *rect, Float32 x, Float32 y, Float32 width, Float32 height, Rect_F32 atlas_location, Atlas *altas, Color4 color);
+    Vertex *rect, Float32 x, Float32 y, Float32 width, Float32 height, Rect_F32 location, Atlas *altas, Color4 color);
 
 //!
 //! @param[out] vertexes Array of preallocated geometry-buffer to which this function will write.
@@ -625,38 +548,6 @@ allocate_struct([[maybe_unused]] Basic_Allocator *allocator, Allocate_Options op
 // Strings:
 //
 
-constexpr bool
-zstr8_is_equals(CStr8 a, CStr8 b) noexcept
-{
-    while (a != nullptr && *a != 0 && b != nullptr && *b != 0) {
-        if (*a != *b) {
-            return false;
-        }
-
-        ++a;
-        ++b;
-    }
-
-    if ((*a == 0 && *b != 0) || (*a != 0 && *b != 0)) {
-        return false;
-    }
-
-    return true;
-}
-
-// TODO(gr3yknigh1): Rename str8_get_lentgh -> zstr8_get_length
-constexpr size_t
-str8_get_length(const char *s) noexcept
-{
-    size_t result = 0;
-
-    while (s[result] != 0) {
-        result++;
-    }
-
-    return result;
-}
-
 //!
 //! NOTE(gr3yknigh1): Maybe report overflow? [2025/04/06]
 //!
@@ -683,7 +574,7 @@ public:
 
     constexpr explicit
     Str8(const char *data_) noexcept
-        : Str8(data_, str8_get_length(data_))
+        : Str8(data_, noc_str8z_length(data_))
     { }
 
     constexpr explicit
@@ -771,7 +662,7 @@ struct Str8_View {
     constexpr inline bool empty(void) const noexcept { return this->length == 0; }
 
     constexpr inline Str8_View() noexcept : data(nullptr), length(0) {}
-    constexpr inline Str8_View(const char *data_) noexcept : data(data_), length(str8_get_length(data_)) {}
+    constexpr inline Str8_View(const char *data_) noexcept : data(data_), length(noxx::str8z_length(data_)) {}
     constexpr inline Str8_View(const char *data_, size_t length_) noexcept : data(data_), length(length_) {}
 
     constexpr inline Str8_View(const Str8 &str) : Str8_View(str.data, str.length) {}
