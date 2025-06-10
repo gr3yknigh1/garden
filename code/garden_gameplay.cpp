@@ -47,19 +47,21 @@ game_on_tick(Platform_Context *platform, Game_Context *game, float delta_time)
 {
     Float32 x_direction = 0, y_direction = 0;
 
-    if (is_key_down(&platform->input_state, Key_Code::Left)) {
+    Input_State *input = &platform->input_state;
+
+    if (input->is_key_down(Key_Code::Left)) {
         x_direction = -1;
     }
 
-    if (is_key_down(&platform->input_state, Key_Code::Right)) {
+    if (input->is_key_down(Key_Code::Right)) {
         x_direction = +1;
     }
 
-    if (is_key_down(&platform->input_state, Key_Code::Down)) {
+    if (input->is_key_down(Key_Code::Down)) {
         y_direction = -1;
     }
 
-    if (is_key_down(&platform->input_state, Key_Code::Up)) {
+    if (input->is_key_down(Key_Code::Up)) {
         y_direction = +1;
     }
 

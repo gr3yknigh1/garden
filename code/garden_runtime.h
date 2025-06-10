@@ -1212,13 +1212,13 @@ enum struct Key_State {
 };
 
 struct Key {
-    Key_State now;
-    Key_State was;
+    Key_State now = Key_State::Up;
+    Key_State was = Key_State::Up;
 
     //!
     //! @brief Repeat count.
     //!
-    Int16U count;
+    Int16U count = 0;
 };
 
 //
@@ -1226,28 +1226,27 @@ struct Key {
 //
 
 struct Input_State {
-#if 0   // @cleanup
-    Float32 x_direction;
-    Float32 y_direction;
-#endif
+    Key keys[static_cast<SizeU>(Key_Code::Count_)] = {};
 
-    Key keys[static_cast<SizeU>(Key_Code::Count_)];
+
+    inline bool
+    is_key_down(Key_Code code) noexcept
+    {
+        return this->keys[static_cast<SizeU>(code)].now == Key_State::Down;
+    }
 };
 
-inline bool
-is_key_down(Input_State *state, Key_Code code)
-{
-    return state->keys[static_cast<SizeU>(code)].now == Key_State::Down;
-}
 
 struct Platform_Context {
     Input_State input_state;
-    Camera *camera;
+
+    Camera *camera = nullptr;
 
     mm::Fixed_Arena persist_arena;
 
     // NOTE(gr3yknigh1): Platform runtime will call issue a draw call if vertexes_count > 0 [2025/03/03]
     mm::Fixed_Arena vertexes_arena;
-    Vertex *vertexes;
-    SizeU vertexes_count;
+
+    Vertex *vertexes{};
+    SizeU vertexes_count = 0;
 };

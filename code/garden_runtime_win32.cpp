@@ -981,8 +981,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
 
     Gameplay gameplay = load_gameplay(STRINGIFY(GARDEN_GAMEPLAY_DLL_NAME));
 
-    Platform_Context platform_context;
-    ZERO_STRUCT(&platform_context);
+    Platform_Context platform_context{};
 
     platform_context.camera = &camera;
     platform_context.persist_arena = mm::make_static_arena(1024);
