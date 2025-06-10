@@ -386,10 +386,10 @@ mm::allocate(mm::Fixed_Arena *arena, SizeU size, mm::Allocate_Options options)
         return nullptr;
     }
 
-    void *allocated = mm::get_offset(arena->data, arena->occupied);
+    void *allocated = noxx::get_offset(arena->data, arena->occupied);
 
-    if (HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
-        mm::zero_memory(allocated, size);
+    if (NOC_HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
+        noc_memory_zero(allocated, size);
     }
 
     arena->occupied += size;
@@ -399,33 +399,19 @@ mm::allocate(mm::Fixed_Arena *arena, SizeU size, mm::Allocate_Options options)
 bool
 mm::destroy(mm::Fixed_Arena *arena)
 {
-    bool result = mm::deallocate(arena->data);
-    mm::zero_struct<mm::Fixed_Arena>(arena);
-    return result;
-}
+    assert(arena);
 
-void
-mm::zero_memory(void *p, SizeU size)
-{
-    for (SizeU i = 0; i < size; ++i) {
-        static_cast<Byte *>(p)[i] = 0;
-    }
-}
-
-void
-mm::copy_memory(void *dst, const void *src, SizeU size)
-{
-    for (SizeU index = 0; index < size; ++index) {
-        static_cast<Byte *>(dst)[index] = static_cast<const Byte *>(src)[index];
-    }
+    mm::deallocate(arena->data);
+    noxx::zero_type(arena);
+    return true;
 }
 
 static inline void *
 allocate_impl(SizeU size, mm::Allocate_Options options)
 {
-    void *result = std::malloc(size);
-    if (result && HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
-        mm::zero_memory(result, size);
+    void *result = noc_allocate(size);
+    if (result && NOC_HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
+        noc_memory_zero(result, size);
     }
     return result;
 }
@@ -445,6 +431,7 @@ mm::dump_allocation_records(bool do_hex_dump)
     SizeU total_memory = 0;
 
     for (const mm::Allocation_Record &record : *records) {
+
         printf("Allocation_Record(options=(%d) size=(%lld) result=(%p) location.file_name=(%s) location.line=(%u) location.function_name=(%s))\n",
             record.options, record.size, record.result, record.location.file_name, record.location.line, record.location.function_name
         );
@@ -452,7 +439,7 @@ mm::dump_allocation_records(bool do_hex_dump)
         total_memory += record.size;
 
         if (do_hex_dump) {
-            mm::hex_dump(record.result, record.size);
+            noc_print_hex_dump(record.result, record.size);
             puts("");
         }
     }
@@ -472,7 +459,7 @@ bool
 mm::deallocate(void *p)
 {
     // TODO(gr3yknigh1): Use platform functions for allocations [2025/04/07]
-    std::free(p);
+    noc_free(p);
     return true;
 }
 
@@ -480,7 +467,7 @@ mm::Block_Allocator
 mm::make_block_allocator(void)
 {
     mm::Block_Allocator result;
-    mm::zero_struct(&result);
+    noxx::zero_type(&result);
     return result;
 }
 
@@ -498,7 +485,7 @@ mm::make_block_allocator(Int64U blocks_count, SizeU block_size, SizeU block_fixe
     }
 
     Block_Allocator result;
-    zero_struct(&result);
+    noxx::zero_type(&result);
 
     result.block_fixed_size = block_fixed_size;
     result.block_count_limit = block_count_limit;
@@ -508,10 +495,10 @@ mm::make_block_allocator(Int64U blocks_count, SizeU block_size, SizeU block_fixe
 
     if (block_count_limit) {
         result.blocks.head = allocate_structs<Block>(blocks_count);
-        zero_structs(result.blocks.head, blocks_count);
+        noxx::zero_type(result.blocks.head, blocks_count);
     } else {
         result.blocks.head = allocate_struct<Block>();
-        zero_struct(result.blocks.head);
+        noxx::zero_type(result.blocks.head);
     }
     assert(result.blocks.head);
 
@@ -571,8 +558,8 @@ mm::allocate(mm::Block_Allocator *allocator, SizeU size, mm::Allocate_Options op
         void *result = mm::allocate(&it->stack, size);
         if (result != nullptr) {
 
-            if (HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
-                mm::zero_memory(result, size);
+            if (NOC_HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
+                noc_memory_zero(result, size);
             }
 
             return result;
@@ -603,7 +590,7 @@ mm::allocate(mm::Block_Allocator *allocator, SizeU size, mm::Allocate_Options op
     // [2025/03/10]
     //
     mm::Block *new_block = mm::allocate_struct<mm::Block>();
-    mm::zero_struct(new_block);
+    noxx::zero_type(new_block);
 
     if (allocator->blocks.count > 0) {
         allocator->blocks.tail->next = new_block;
@@ -622,8 +609,8 @@ mm::allocate(mm::Block_Allocator *allocator, SizeU size, mm::Allocate_Options op
 
     void *result = mm::allocate(&new_block->stack, size);
 
-    if (result && HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
-        mm::zero_memory(result, size);
+    if (result && NOC_HAS_FLAG(options, ALLOCATE_ZERO_MEMORY)) {
+        noc_memory_zero(result, size);
     }
 
     return result;
@@ -688,7 +675,7 @@ mm::allocate(mm::Stack_View *view, SizeU size)
         return nullptr;
     }
 
-    void *result = mm::get_offset(view->data, view->occupied);
+    void *result = noxx::get_offset(view->data, view->occupied);
     view->occupied += size;
     return result;
 }
@@ -763,43 +750,6 @@ mm::next(mm::Block_Allocator *allocator, void *data)
         }
     }
     return nullptr;
-}
-
-SizeU
-get_file_size(FILE *file)
-{
-    assert(file);
-
-    fseek(file, 0, SEEK_END);
-    SizeU file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    assert(file_size);
-
-    return file_size;
-}
-
-void
-mm::hex_dump(void *buffer, SizeU buffer_size)
-{
-    for (SizeU i = 0; i < buffer_size; i += 16) {
-        printf("%06llx: ", i);
-
-        for (SizeU j = 0; j < 16; j++) {
-            if (i + j < buffer_size) {
-                printf("%02x ", static_cast<Byte *>(buffer)[i + j]);
-            } else {
-                printf("   ");
-            }
-        }
-
-        printf(" ");
-        for (SizeU j = 0; j < 16; j++) {
-            if (i + j < buffer_size) {
-                printf("%c", isprint(static_cast<Byte *>(buffer)[i + j]) ? static_cast<Byte *>(buffer)[i + j] : '.');
-            }
-        }
-        printf("\n");
-    }
 }
 
 

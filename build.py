@@ -11,6 +11,9 @@ assets_folder  = os.path.sep.join([project_folder, "assets"])
 
 noc = add_external_library("noc", location=r"P:\nostdlib")
                            #location="git+https://github.com/gr3yknigh1/nostdlib@bb611ec")
+# NOTE(gr3yknigh1): While there is no package management and no option being propagated, NOC_LIBC_WRAPPERS are defined
+# by default [2025/06/10]
+target_macros(noc, Access.PUBLIC, macros=dict(NOC_LIBC_WRAPPERS="1"))
 
 glm = add_external_library("glm", location="glm", tool=BuildTool.CMAKE)
 target_includes(glm, Access.PUBLIC, includes=["glm"])

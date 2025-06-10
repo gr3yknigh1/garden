@@ -388,11 +388,11 @@ struct Win32_Key_State {
 };
 
 #if !defined(WIN32_KEYSTATE_IS_EXTENDED)
-    #define WIN32_KEYSTATE_IS_EXTENDED(K_PTR) HAS_FLAG((K_PTR)->flags, KF_EXTENDED)
+    #define WIN32_KEYSTATE_IS_EXTENDED(K_PTR) NOC_HAS_FLAG((K_PTR)->flags, KF_EXTENDED)
 #endif
 
 #if !defined(WIN32_KEYSTATE_IS_RELEASED)
-    #define WIN32_KEYSTATE_IS_RELEASED(K_PTR) HAS_FLAG((K_PTR)->flags, KF_UP)
+    #define WIN32_KEYSTATE_IS_RELEASED(K_PTR) NOC_HAS_FLAG((K_PTR)->flags, KF_UP)
 #endif
 
 Win32_Key_State win32_convert_msg_to_key_state(MSG message);
@@ -514,10 +514,10 @@ void gl_clear_all_errors(void);
 void gl_die_on_first_error(void);
 void gl_print_debug_info(void);
 
-#define WATCH_EXT_NONE MAKE_FLAG(0)
-#define WATCH_EXT_BMP  MAKE_FLAG(1)
-#define WATCH_EXT_GLSL MAKE_FLAG(2)
-#define WATCH_EXT_DLL  MAKE_FLAG(3)
+#define WATCH_EXT_NONE NOC_MAKE_FLAG(0)
+#define WATCH_EXT_BMP  NOC_MAKE_FLAG(1)
+#define WATCH_EXT_GLSL NOC_MAKE_FLAG(2)
+#define WATCH_EXT_DLL  NOC_MAKE_FLAG(3)
 
 constexpr Str16_View WATCH_EXT_BMP_VIEW = L"bmp";
 constexpr Str16_View WATCH_EXT_GLSL_VIEW = L"glsl";
@@ -773,7 +773,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     const wchar_t *window_title = L"garden";
 
     WNDCLASSW window_class;
-    mm::zero_struct(&window_class);
+    noxx::zero_type(&window_class);
     window_class.style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC;
     //                                             ^^^^^^^^
     // NOTE(ilya.a): Needed by OpenGL. See Khronos's docs [2024/11/10]
@@ -870,7 +870,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
 
     mm::Fixed_Arena page_arena = mm::make_static_arena(1024);
 
-    Vertex_Buffer_Layout vertex_buffer_layout;
+    Vertex_Buffer_Layout vertex_buffer_layout{};
     assert(make_vertex_buffer_layout(&page_arena, &vertex_buffer_layout, 4));
 
     assert(vertex_buffer_layout_push_float(&vertex_buffer_layout, 2));
@@ -998,7 +998,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
         double dt = clock_tick(&clock);
 
         MSG message;
-        mm::zero_struct(&message);
+        noxx::zero_type(&message);
 
         //
         // Game Hot reload:
@@ -1387,8 +1387,8 @@ win32_window_message_handler(HWND window, UINT message, WPARAM wparam, LPARAM lp
 static void
 win32_init_opengl_context_extensions(void)
 {
-    WNDCLASSA dummy_window_class;
-    mm::zero_struct(&dummy_window_class);
+    WNDCLASSA dummy_window_class{};
+    noxx::zero_type(&dummy_window_class);
 
     dummy_window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     dummy_window_class.lpfnWndProc = DefWindowProcA;
@@ -1406,8 +1406,8 @@ win32_init_opengl_context_extensions(void)
     HDC dummy_device_context = GetDC(dummy_window);
 
     // NOTE(ilya.a): The worst struct I ever met [2024/09/07]
-    PIXELFORMATDESCRIPTOR pfd;
-    mm::zero_struct(&pfd);
+    PIXELFORMATDESCRIPTOR pfd{};
+    noxx::zero_type(&pfd);
 
     pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
     pfd.nVersion = 1;
@@ -1588,7 +1588,9 @@ link_shader_program(GLuint vertex_shader, GLuint fragment_shader)
 bool
 make_vertex_buffer_layout(mm::Fixed_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity)
 {
-    mm::zero_struct(layout);
+    assert(arena && layout && attributes_capacity);
+
+    noxx::zero_type(layout);
 
     //!
     //! @todo(gr3yknigh1): Make it so on input user provide full description of layout.
@@ -1662,8 +1664,7 @@ vertex_buffer_layout_build_attrs(const Vertex_Buffer_Layout *layout)
 Camera
 make_camera(Camera_ViewMode view_mode)
 {
-    Camera camera;
-    mm::zero_struct(&camera);
+    Camera camera{};
 
     camera.position = {0, 0, 3.0f};
     camera.front = {0, 0, -1.0f};
@@ -2005,7 +2006,7 @@ load_tilemap_from_buffer(Asset_Store *store, char *buffer, SizeU buffer_size, Ti
     assert(tilemap_image_path_view.length && tilemap_image_path_view.data);
 
     char *tilemap_image_path = (char *)mm::allocate(tilemap_image_path_view.length + 1);
-    mm::zero_memory(tilemap_image_path, tilemap_image_path_view.length + 1);
+    noc_memory_zero(tilemap_image_path, tilemap_image_path_view.length + 1);
     assert(str8_view_copy_to_nullterminated(tilemap_image_path_view, tilemap_image_path, tilemap_image_path_view.length + 1));
 
     // TODO(gr3yknigh1): Generalize format validation [2025/02/24]
@@ -2066,7 +2067,7 @@ watch_thread_worker(PVOID param)
     assert(file_full_path_buffer && "Buy more RAM");
 
     // NOTE(gr3yknigh1): Clunky! [2025/03/10]
-    mm::copy_memory(file_full_path_buffer, static_cast<const void *>(context->target_dir), target_dir_buffer_size);
+    noc_memory_copy(file_full_path_buffer, static_cast<const void *>(context->target_dir), target_dir_buffer_size);
 
     while (!context->should_stop.test()) {
 
@@ -2088,7 +2089,7 @@ watch_thread_worker(PVOID param)
                 // TODO(gr3yknigh1): Replace with some kind of Path_Join function [2025/03/10]
                 static_cast<wchar_t *>(file_full_path_buffer)[target_dir_length] = path16_get_separator();
                 SizeU separator_size = sizeof(wchar_t);
-                mm::copy_memory( mm::get_offset(file_full_path_buffer, target_dir_buffer_size + separator_size), static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
+                noc_memory_copy( noxx::get_offset(file_full_path_buffer, target_dir_buffer_size + separator_size), static_cast<const void *>(changed_file_relative_path), changed_file_relative_path_buffer_size );
 
                 Str16_View file_name(static_cast<wchar_t *>(file_full_path_buffer), target_dir_length + 1 + changed_file_relative_path_length);
                 //                                                                                    ^^^
@@ -2115,7 +2116,7 @@ watch_thread_worker(PVOID param)
                 break;
             }
 
-            current_notify_info = mm::get_offset(current_notify_info, current_notify_info->NextEntryOffset);
+            current_notify_info = noxx::get_offset(current_notify_info, current_notify_info->NextEntryOffset);
         }
     }
 
@@ -2198,7 +2199,7 @@ make_asset_store_from_folder(Asset_Store *store, const char *folder_path)
 {
     assert(store && folder_path);
 
-    mm::zero_struct(store);
+    noxx::zero_type(store);
 
     store->place = Asset_Store_Place::Folder;
     store->asset_pool = mm::make_block_allocator(Asset_Store::max_asset_count, sizeof(Asset), sizeof(Asset), Asset_Store::max_asset_count);
@@ -2217,7 +2218,7 @@ asset_store_destroy(Asset_Store *store)
     assert(mm::destroy_block_allocator(&store->asset_pool));
     assert(mm::destroy_block_allocator(&store->asset_content));
 
-    mm::zero_struct(store);
+    noxx::zero_type(store);
 
     return true;
 }
@@ -2241,7 +2242,7 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
     location->u.file.handle = fopen(location->u.file.path.data, "r");
     assert(location->u.file.handle);
 
-    location->u.file.size   = get_file_size(location->u.file.handle);
+    location->u.file.size   = noc_get_file_size(location->u.file.handle);
 
     if (asset->type == Asset_Type::Texture) {
         // NOTE(gr3yknigh1): Assume that file is path to BMP image [2025/03/10]
@@ -2257,7 +2258,7 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
     } else if (asset->type == Asset_Type::Shader) {
 
         asset->u.shader.source_code = static_cast<char *>(allocate(&store->asset_content, location->u.file.size));
-        mm::zero_memory(asset->u.shader.source_code, location->u.file.size);
+        noc_memory_zero(asset->u.shader.source_code, location->u.file.size);
         fread(asset->u.shader.source_code, location->u.file.size, 1, location->u.file.handle);
 
         Shader_Compile_Result result = compile_shader(asset->u.shader.source_code, location->u.file.size);
@@ -2276,8 +2277,7 @@ asset_load(Asset_Store *store, Asset_Type type, const Str8_View file_path)
     } else if (asset->type == Asset_Type::Tilemap) {
 
         SizeU buffer_size = asset->location.u.file.size + 1;
-        void* buffer = mm::allocate(buffer_size);
-        mm::zero_memory(buffer, buffer_size);
+        void* buffer = mm::allocate(buffer_size, ALLOCATE_ZERO_MEMORY);
 
         fread(buffer, buffer_size - 1, 1, asset->location.u.file.handle);
 
@@ -2312,7 +2312,7 @@ asset_reload(Asset_Store *store, Asset *asset)
         if (result && asset->location.u.file.handle == nullptr) {
             // TODO(gr3yknigh1): Wrap fopen in function which accepts Str8_View-s [2025/03/10]
             asset->location.u.file.handle = fopen(asset->location.u.file.path.data, "r");
-            asset->location.u.file.size = get_file_size(asset->location.u.file.handle);
+            asset->location.u.file.size = noc_get_file_size(asset->location.u.file.handle);
             assert(asset->location.u.file.handle);
         }
 
@@ -2330,7 +2330,7 @@ asset_reload(Asset_Store *store, Asset *asset)
         } else if (asset->type == Asset_Type::Shader) {
 
             asset->u.shader.source_code = static_cast<char *>(allocate(&store->asset_content, asset->location.u.file.size));
-            mm::zero_memory(asset->u.shader.source_code, asset->location.u.file.size);
+            noc_memory_zero(asset->u.shader.source_code, asset->location.u.file.size);
             fread(asset->u.shader.source_code, asset->location.u.file.size, 1, asset->location.u.file.handle);
 
             Shader_Compile_Result compile_result = compile_shader(asset->u.shader.source_code, asset->location.u.file.size);
@@ -2341,7 +2341,7 @@ asset_reload(Asset_Store *store, Asset *asset)
         } else if (asset->type == Asset_Type::Tilemap) {
             SizeU buffer_size = asset->location.u.file.size + 1;
             void* buffer = mm::allocate(buffer_size);
-            mm::zero_memory(buffer, buffer_size);
+            noc_memory_zero(buffer, buffer_size);
 
             fread(buffer, buffer_size - 1, 1, asset->location.u.file.handle);
 
@@ -2429,7 +2429,7 @@ bool make_watch_context(Watch_Context *context, void *parameter, const wchar_t *
 {
     assert(context);
 
-    mm::zero_struct(context);
+    noxx::zero_type(context);
 
     context->should_stop.clear();
 
@@ -2554,7 +2554,7 @@ compile_shader(char *source_code, SizeU file_size)
 
     // TODO(gr3yknigh1): Move to arena [2025/03/28]
     char *vertex_source_buffer = static_cast<char *>(mm::allocate(vertex_source.length + 1));
-    mm::zero_memory(vertex_source_buffer, vertex_source.length + 1);
+    noc_memory_zero(vertex_source_buffer, vertex_source.length + 1);
     assert(str8_view_copy_to_nullterminated(vertex_source, vertex_source_buffer, vertex_source.length + 1));
     GLuint vertex_module_id = compile_shader_from_str8(vertex_source_buffer, Shader_Module_Type::Vertex);
     assert(vertex_module_id);
@@ -2562,7 +2562,8 @@ compile_shader(char *source_code, SizeU file_size)
 
     // TODO(gr3yknigh1): Move to arena [2025/03/28]
     char *fragment_source_buffer = static_cast<char *>(mm::allocate(fragment_source.length + 1));
-    mm::zero_memory(fragment_source_buffer, fragment_source.length + 1);
+    noc_memory_zero(fragment_source_buffer, fragment_source.length + 1);
+
     assert(str8_view_copy_to_nullterminated(fragment_source, fragment_source_buffer, fragment_source.length + 1));
     GLuint fragment_module_id = compile_shader_from_str8(fragment_source_buffer, Shader_Module_Type::Fragment);
     assert(fragment_module_id);
@@ -2570,6 +2571,7 @@ compile_shader(char *source_code, SizeU file_size)
 
     Shader_Compile_Result result{};
     result.shader_program_id = link_shader_program(vertex_module_id, fragment_module_id);
+
     return result;
 }
 

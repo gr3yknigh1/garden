@@ -22,14 +22,6 @@
 
 #include <noc/noc.h>
 
-#if !defined(MAKE_FLAG)
-    #define MAKE_FLAG(INDEX) (1 << (INDEX))
-#endif
-
-#if !defined(HAS_FLAG)
-    #define HAS_FLAG(MASK, FLAG) (((MASK) & (FLAG)) == (FLAG))
-#endif
-
 #if !defined(LITERAL)
     #if defined(__cplusplus)
         #define LITERAL(X) X
@@ -255,21 +247,21 @@ enum class Camera_ViewMode {
 };
 
 struct Camera {
-    glm::vec3 position;
-    glm::vec3 front;
-    glm::vec3 up;
+    glm::vec3 position = {};
+    glm::vec3 front = {};
+    glm::vec3 up = {};
 
-    Float32 yaw;
-    Float32 pitch;
+    Float32 yaw = 0;
+    Float32 pitch = 0;
 
-    Float32 speed;
-    Float32 sensitivity;
-    Float32 fov;
+    Float32 speed = 0;
+    Float32 sensitivity = 0;
+    Float32 fov = 0;
 
-    Float32 near;
-    Float32 far;
+    Float32 near = 0;
+    Float32 far = 0;
 
-    Camera_ViewMode view_mode;
+    Camera_ViewMode view_mode = Camera_ViewMode::Perspective;
 };
 
 //!
@@ -305,44 +297,16 @@ struct Buffer_View {
     constexpr Buffer_View() noexcept : data(nullptr), size(0) {}
 };
 
-void zero_memory(void *p, SizeU size);
-void copy_memory(void *dst, const void *src, SizeU size);
-
-//!
-//! @brief Make offset by number of bytes specified.
-//!
-template<typename Ty = void>
-inline Ty *
-get_offset(Ty *pointer, SizeU offset)
-{
-    return reinterpret_cast<Ty *>(reinterpret_cast<Byte *>(pointer) + offset);
-}
-
-template <typename Ty>
-inline void
-zero_struct(Ty *p)
-{
-    zero_memory(reinterpret_cast<void *>(p), sizeof(*p));
-}
-
-template <typename Ty>
-inline void
-zero_structs(Ty *p, Int64U count)
-{
-    zero_memory(reinterpret_cast<void *>(p), sizeof(*p) * count);
-}
 
 //! @todo(gr3yknigh1): Replace with typed-enum class [2025/04/07] #refactor
 
-#define ALLOCATE_NO_OPTS     MAKE_FLAG(0)
-#define ALLOCATE_ZERO_MEMORY MAKE_FLAG(1)
+#define ALLOCATE_NO_OPTS     NOC_MAKE_FLAG(0)
+#define ALLOCATE_ZERO_MEMORY NOC_MAKE_FLAG(1)
 
 typedef Int32U Allocate_Options;
 
-//!
-//! @brief Base version of `allocate` function. Calls to platform specific allocation function.
-//!
-void *allocate(SizeU size, Allocate_Options options = ALLOCATE_NO_OPTS);
+void *allocate(SizeU size, mm::Allocate_Options options = ALLOCATE_NO_OPTS);
+bool deallocate(void *p);
 
 template <typename Ty>
 inline Ty *
@@ -357,9 +321,6 @@ allocate_structs(Int64U count, Allocate_Options options = ALLOCATE_NO_OPTS)
 {
     return static_cast<Ty *>(allocate(sizeof(Ty) * count, options));
 }
-
-
-bool deallocate(void *p);
 
 //!
 //! @brief Memory block, which has static capacity, no ability to deallocate each individual allocations and can only be free whole block.
@@ -493,12 +454,6 @@ std::list<Allocation_Record> *get_allocation_records(void);
 //!
 bool dump_allocation_records(bool do_hex_dump = false);
 
-//!
-//! @brief Dumps into console hex-view of the memory (formatted).
-//!
-//! @todo(gr3yknigh1): Add option to dump it all to other place (file for example) [2025/04/25]
-//!
-void hex_dump(void *buffer, Int64U buffer_length);
 
 struct Basic_Allocator {};
 
@@ -525,7 +480,8 @@ allocate([[maybe_unused]] Basic_Allocator *allocator, SizeU size, Allocate_Optio
 inline bool
 deallocate([[maybe_unused]] Basic_Allocator *allocator, void *data) noexcept
 {
-    return deallocate(data);
+    deallocate(data);
+    return true; // XXX
 }
 
 template <typename Ty>
@@ -579,9 +535,8 @@ public:
         if (data_ && length_) {
             size_t data_buffer_size = this->length + 1;
 
-            void *data_buffer = mm::allocate(data_buffer_size);
+            void *data_buffer = mm::allocate(data_buffer_size, ALLOCATE_ZERO_MEMORY);
             assert(data_buffer);
-            mm::zero_memory(data_buffer, data_buffer_size);
 
             str8_copy_to(data_buffer, data_, this->length, data_buffer_size);
 
@@ -906,17 +861,17 @@ bool      lexer_is_end(Lexer *lexer);
 // Containers:
 //
 
-template <typename Value_Type, typename Allocator_Type = mm::Basic_Allocator>
+template <typename Item_Type, typename Allocator_Type = mm::Basic_Allocator>
 struct Linked_List {
 
     struct Node {
         Node *next;
         Node *previous;
 
-        Value_Type value;
+        Item_Type value;
 
         constexpr
-        Node(const Value_Type &value_) noexcept
+        Node(const Item_Type &value_) noexcept
             : next(nullptr), previous(nullptr), value(value_)
         {
         }
@@ -943,13 +898,13 @@ struct Linked_List {
             return this->current;
         }
 
-        Value_Type &
+        Item_Type &
         operator*(void) const noexcept
         {
             return this->current->value;
         }
 
-        Value_Type *
+        Item_Type *
         operator->() noexcept
         {
             return &this->current->value;
@@ -1047,54 +1002,142 @@ struct Linked_List {
     Linked_List(const Linked_List &) = delete;
     Linked_List(Linked_List &&) = delete;
 
-    bool
-    push_back(const Value_Type &new_element) noexcept
+    const Item_Type *
+    at(Int64U index) const noexcept
     {
-        Node *new_node = mm::allocate_struct<Node>(this->allocator, ALLOCATE_ZERO_MEMORY);
+        Node &node = this->node_at(index);
 
-        if (!new_node) {
-            return false;
+        if (node != nullptr) {
+            return &node->data;
+        }
+        return nullptr;
+    }
+
+    Item_Type *
+    at(Int64U index) noexcept
+    {
+        Node *node = this->node_at(index);
+
+        if (node != nullptr) {
+            return &node->data;
         }
 
-        std::construct_at(new_node, new_element);
+        return nullptr;
+    }
 
-        if (this->head == nullptr) {
-            assert(!this->count);
-            this->head = new_node;
+    Node *
+    node_at(uint64_t index) noexcept
+    {
+        if (this->count == 0 || index < 0 || index >= this->count) [[unlikely]] {
+            return nullptr;
+        }
+
+        if (index < this->count / 2) {
+            for (Linked_List::Forward_Iterator it = this->begin(); it != this->end(); ++it) {
+                if (it.index == index) {
+                    return it.get_node();
+                }
+            }
         } else {
+            for (Linked_List::Backward_Iterator it = this->rbegin(); it != this->rend(); ++it) {
+                if (it.index == index) {
+                    return it.get_node();
+                }
+            }
+        }
+
+        return nullptr;
+    }
+
+    const Node *
+    node_at(Int64U index) const noexcept
+    {
+        if (this->count == 0 || index < 0 || index >= this->count) [[unlikely]] {
+            return nullptr;
+        }
+
+        if (index < this->count / 2) {
+            for (Linked_List::Forward_Iterator it = this->begin(); it != this->end(); ++it) {
+                if (it.index == index) {
+                    return it.get_node();
+                }
+            }
+        } else {
+            for (Linked_List::Backward_Iterator it = this->rbegin(); it != this->rend(); ++it) {
+                if (it.index == index) {
+                    return it.get_node();
+                }
+            }
+        }
+
+        return nullptr;
+    }
+
+    Int64U
+    push_back(const Item_Type &new_element)
+    {
+        Node *new_node = mm::allocate_struct<Node>(this->allocator, ALLOCATE_ZERO_MEMORY);
+        assert(new_node);
+
+        try {
+            std::construct_at(new_node, new_element);
+        } catch (...) {
+            mm::deallocate(new_node);
+            throw;
+        }
+
+        return this->push_back(new_node);
+    }
+
+    Int64U
+    push_back(Node* new_node)
+    {
+        if (this->head != nullptr) [[likely]] {
+            assert(this->tail && "When head is not null, tail should also be not null!");
+
             this->tail->chain(new_node);
+        } else {
+            assert(this->count == 0 && "When head is null count should be zero!");
+
+            this->head = new_node;
         }
 
         this->tail = new_node;
-        ++this->count;
 
-        return true;
+        uint64_t new_node_index = this->count;
+        this->count++;
+
+        return new_node_index;
     }
 
-    Value_Type &
+    Item_Type &
     last(void) noexcept
     {
         return this->rbegin().current->value;
     }
 
-    const Value_Type &
+    const Item_Type &
     last(void) const noexcept
     {
         return this->rbegin().current->value;
     }
 
-    bool
+    Int64U
     clear(void) noexcept
     {
+        Int64U count_ = this->count;
+
         for (Forward_Iterator it = this->begin(); it != this->end(); ++it) {
             Node *current = it.get_node();
             if (current->previous) {
                 mm::deallocate(this->allocator, current->previous);
             }
         }
+
         mm::deallocate(this->allocator, this->tail);
-        mm::zero_memory(this, sizeof(*this));
-        return true;
+        noxx::zero_type(this);
+
+        return count_;
     }
 
     constexpr Forward_Iterator
@@ -1175,11 +1218,6 @@ struct Reporter {
 //
 
 int get_offset_from_coords_of_2d_grid_array_rm(int width, int x, int y);
-
-//
-// OS:
-//
-SizeU get_file_size(FILE *file);
 
 //
 // Keyboard input
