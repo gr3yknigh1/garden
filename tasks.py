@@ -28,7 +28,7 @@ from htask import define_task, Context
 from htask import load_env, save_env, is_file_busy
 from htask.progs import msvc, cmake
 
-from hbuild import compile_package
+from hbuild import compile_project, Reporter, print_report
 
 F = Callable
 
@@ -79,7 +79,16 @@ def build(c: Context, build_type=default_build_type, clean=False, reconfigure=Fa
         cmake.build(c, configuration_name=build_type)
 
     else:
-        compile_package(c, build_file=join(project_folder, "build.py"), build_type=build_type, prefix=output_folder)
+        reporter = Reporter()
+        compile_project(
+            c,
+            build_file=join(project_folder, "build.py"),
+            build_type=build_type,
+            prefix=output_folder,
+            reporter=reporter,
+        )
+
+        print_report(reporter)
 
 
 @define_task(name="hbuild")

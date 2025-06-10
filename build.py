@@ -11,7 +11,6 @@ assets_folder  = os.path.sep.join([project_folder, "assets"])
 
 noc = add_external_library("noc", location=r"P:\nostdlib")
                            #location="git+https://github.com/gr3yknigh1/nostdlib@bb611ec")
-#noxx = add_external_library("noxx", location=r"P:\nostdlib")
 
 glm = add_external_library("glm", location="glm", tool=BuildTool.CMAKE)
 target_includes(glm, Access.PUBLIC, includes=["glm"])

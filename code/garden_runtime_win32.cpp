@@ -2640,7 +2640,7 @@ bind_vertex_buffer(Vertex_Buffer *buffer)
 SizeU
 mm::get_page_size(void)
 {
-    SizeU result;
+    SizeU result = 0;
     SYSTEM_INFO system_info = {0};
     GetSystemInfo(&system_info);
     result = system_info.dwPageSize;
