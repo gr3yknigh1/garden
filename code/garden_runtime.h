@@ -305,11 +305,6 @@ struct Buffer_View {
     constexpr Buffer_View() noexcept : data(nullptr), size(0) {}
 };
 
-SizeU get_page_size(void);
-
-SizeU align(SizeU size, SizeU alignment);
-SizeU page_align(SizeU size);
-
 void zero_memory(void *p, SizeU size);
 void copy_memory(void *dst, const void *src, SizeU size);
 

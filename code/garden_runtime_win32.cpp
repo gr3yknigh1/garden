@@ -48,15 +48,12 @@
 #include "imgui_impl_win32.h"
 #include "imgui_stdlib.h" // ImGui::InputText with std::string instead of char*
 
+#include <noc/noc.h>
+
 #include "media/aseprite.h"
 
 #include "garden_gameplay.h"
 #include "garden_runtime.h"
-
-//! @todo(gr3yknigh1): Replace with more non-platform dependent code [2025/03/03] #refactor #renaming
-#if !defined(ZERO_STRUCT)
-    #define ZERO_STRUCT(STRUCT_PTR) ZeroMemory((STRUCT_PTR), sizeof(*(STRUCT_PTR)))
-#endif
 
 
 typedef int bool32_t;
@@ -776,7 +773,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     const wchar_t *window_title = L"garden";
 
     WNDCLASSW window_class;
-    ZERO_STRUCT(&window_class);
+    mm::zero_struct(&window_class);
     window_class.style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC;
     //                                             ^^^^^^^^
     // NOTE(ilya.a): Needed by OpenGL. See Khronos's docs [2024/11/10]
@@ -973,7 +970,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
     //
     Clock clock = make_clock();
 
-    uint64_t frame_counter = 0;
+    Int64U frame_counter = 0;
 
     //
     // Load game code:
@@ -1001,7 +998,7 @@ wWinMain(HINSTANCE instance, [[maybe_unused]] HINSTANCE previous_instance, [[may
         double dt = clock_tick(&clock);
 
         MSG message;
-        ZERO_STRUCT(&message);
+        mm::zero_struct(&message);
 
         //
         // Game Hot reload:
@@ -1391,7 +1388,7 @@ static void
 win32_init_opengl_context_extensions(void)
 {
     WNDCLASSA dummy_window_class;
-    ZERO_STRUCT(&dummy_window_class);
+    mm::zero_struct(&dummy_window_class);
 
     dummy_window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     dummy_window_class.lpfnWndProc = DefWindowProcA;
@@ -1410,7 +1407,7 @@ win32_init_opengl_context_extensions(void)
 
     // NOTE(ilya.a): The worst struct I ever met [2024/09/07]
     PIXELFORMATDESCRIPTOR pfd;
-    ZERO_STRUCT(&pfd);
+    mm::zero_struct(&pfd);
 
     pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
     pfd.nVersion = 1;
@@ -1591,7 +1588,7 @@ link_shader_program(GLuint vertex_shader, GLuint fragment_shader)
 bool
 make_vertex_buffer_layout(mm::Fixed_Arena *arena, Vertex_Buffer_Layout *layout, size32_t attributes_capacity)
 {
-    ZERO_STRUCT(layout);
+    mm::zero_struct(layout);
 
     //!
     //! @todo(gr3yknigh1): Make it so on input user provide full description of layout.
@@ -1666,7 +1663,7 @@ Camera
 make_camera(Camera_ViewMode view_mode)
 {
     Camera camera;
-    ZERO_STRUCT(&camera);
+    mm::zero_struct(&camera);
 
     camera.position = {0, 0, 3.0f};
     camera.front = {0, 0, -1.0f};
@@ -2633,15 +2630,4 @@ bind_vertex_buffer(Vertex_Buffer *buffer)
     glBindBuffer(GL_ARRAY_BUFFER, buffer->id);
 
     return true;
-}
-
-
-SizeU
-mm::get_page_size(void)
-{
-    SizeU result = 0;
-    SYSTEM_INFO system_info = {0};
-    GetSystemInfo(&system_info);
-    result = system_info.dwPageSize;
-    return result;
 }

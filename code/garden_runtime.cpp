@@ -617,7 +617,7 @@ mm::allocate(mm::Block_Allocator *allocator, SizeU size, mm::Allocate_Options op
     if (allocator->block_fixed_size) {
         new_block->stack = mm::make_stack_view(allocator->block_fixed_size);
     } else {
-        new_block->stack = mm::make_stack_view(mm::page_align(size));
+        new_block->stack = mm::make_stack_view(noc_align_to_page_size(size));
     }
 
     void *result = mm::allocate(&new_block->stack, size);
@@ -711,22 +711,6 @@ mm::make_stack_view(SizeU capacity)
     result.data = allocate(capacity);
     result.capacity = capacity;
     result.occupied = 0;
-    return result;
-}
-
-SizeU
-mm::align(SizeU size, SizeU alignment)
-{
-    SizeU result =  size + (alignment - size % alignment);
-    return result;
-}
-
-SizeU
-mm::page_align(SizeU size)
-{
-    SizeU page_size = mm::get_page_size();
-
-    SizeU result = mm::align(size, page_size);
     return result;
 }
 
