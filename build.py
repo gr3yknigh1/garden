@@ -9,7 +9,7 @@ from hbuild import *
 project_folder = dirname(realpath(__file__))
 assets_folder  = os.path.sep.join([project_folder, "assets"])
 
-noc = add_external_library("noc", location=r"P:\nostdlib")
+noc = add_external_library("noc", location=r"nostdlib")
                            #location="git+https://github.com/gr3yknigh1/nostdlib@bb611ec")
 # NOTE(gr3yknigh1): While there is no package management and no option being propagated, NOC_LIBC_WRAPPERS are defined
 # by default [2025/06/10]
